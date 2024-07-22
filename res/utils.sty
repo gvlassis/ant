@@ -1,0 +1,70 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{utils}
+
+\RequirePackage{shellesc}
+\RequirePackage{catchfile}
+\RequirePackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{fillbetween}
+    \usepgfplotslibrary{groupplots}
+\RequirePackage{xstring}
+
+\newcommand{\plotspl}[4]{
+    % #1: dataset, #2: family, #3: parametrization, #4: split
+
+    \immediate\write18{ls "../out/#1/#2/#3" | grep "ζ=*" | cut -d = -f 2 | sort -n | tr "\string\n" "," | sed "s/,$//" > ζs.txt}
+    \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
+    \immediate\write18{rm ζs.txt}
+
+    \foreach \ζ in \zetas{
+        \addplot table [x=k, y=min_#4_loss_mean] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \pgfplotsset{cycle list shift=-1}
+        \addplot+[name path=top, opacity=0, forget plot] table [x=k, y=min_#4_loss_top] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot+[name path=bot, opacity=0, forget plot] table [x=k, y=min_#4_loss_bot] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
+        \pgfplotsset{cycle list shift=0}
+    }
+}
+
+\newcommand{\plotparametrization}[3]{
+    % #1: dataset, #2: family, #3: parametrization
+
+    \nextgroupplot[ylabel=min\_train\_loss]
+    \plotspl{#1}{#2}{#3}{train}
+    \nextgroupplot[ylabel=min\_val\_loss]
+    \plotspl{#1}{#2}{#3}{val}
+}
+
+\newcommand{\plotfamily}[2]{
+    % #1: dataset, #2: family
+    
+    \immediate\write18{ls "../out/#1/#2/sp" | grep "ζ=*" | cut -d = -f 2 | sort -n | tr "\string\n" "," | sed "s/,$//" > ζs.txt}
+    \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
+    \immediate\write18{rm ζs.txt}
+
+    \StrCount{\zetas}{,}[\lenzetas]
+    \pgfmathtruncatemacro{\lenzetas}{\lenzetas+1}
+
+    \pgfmathtruncatemacro{\colorstep}{1000/\lenzetas}
+    \pgfplotsset{
+        cycle list={[colors of colormap={0,\colorstep,...,1000}]}
+    }
+
+    \begin{tikzpicture}
+
+        \begin{groupplot}[group style={rows=2, columns=2, horizontal sep=1.3cm}, xlabel=k, xmode=log, scale=0.65]
+            \plotparametrization{#1}{#2}{sp}
+            \plotparametrization{#1}{#2}{mup}
+        \end{groupplot}
+
+        \begin{axis}[xmin=0, xmax=1, ymin=0, ymax=1, legend columns=-1, hide axis, scale only axis, width=1mm, legend to name=leg:#1/#2]
+            \foreach \ζ in \zetas{
+                \addplot+[mark=none] coordinates {(0,0)};
+                \expandafter\addlegendentry\expandafter{\ζ}
+            }
+        \end{axis}
+
+        \path (group c1r1.north east) -- node[above]{\pgfplotslegendfromname{leg:#1/#2}} (group c2r1.north west);
+
+    \end{tikzpicture}
+}

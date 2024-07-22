@@ -1,0 +1,49 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage{ragged2e}
+\RequirePackage{xstring}
+\RequirePackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
+\usepackage{shellesc}
+    \immediate\write18{ls "../out/\dataset/\family/\parametrization" | grep "ζ=*" | cut -d = -f 2 | sort -n | tr "\string\n" "," | sed "s/,$//" > ζs.txt}
+\usepackage{catchfile}
+    \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
+    \immediate\write18{rm ζs.txt}
+\usepackage{utils}
+
+\begin{document}
+
+\begin{figure}
+\Centering
+
+\StrCount{\zetas}{,}[\lenzetas]
+\pgfmathtruncatemacro{\lenzetas}{\lenzetas+1}
+\pgfmathtruncatemacro{\colorstep}{1000/\lenzetas}
+\pgfplotsset{
+    cycle list={[colors of colormap={0,\colorstep,...,1000}]}
+}
+
+\begin{tikzpicture}
+
+    \begin{groupplot}[group style={rows=1, columns=2, horizontal sep=1.3cm}, xlabel=k, xmode=log, scale=0.65]
+        \plotparametrization{\dataset}{\family}{\parametrization}
+    \end{groupplot}
+
+    \begin{axis}[xmin=0, xmax=1, ymin=0, ymax=1, legend columns=-1, hide axis, scale only axis, width=1mm, legend to name=leg:\dataset/\family/parametrization]
+        \foreach \ζ in \zetas{
+            \addplot+[mark=none] coordinates {(0,0)};
+            \expandafter\addlegendentry\expandafter{\ζ}
+        }
+    \end{axis}
+
+    \path (group c1r1.north east) -- node[above]{\pgfplotslegendfromname{leg:\dataset/\family/parametrization}} (group c2r1.north west);
+
+\end{tikzpicture}
+
+\caption{\dataset/\family/parametrization}
+\end{figure}
+
+\end{document}
+

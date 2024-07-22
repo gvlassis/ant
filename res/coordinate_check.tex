@@ -1,0 +1,29 @@
+\documentclass{article}
+    \pagestyle{empty}
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+\usepackage{xstring}
+
+\begin{document}
+
+\pgfplotstableread{\logpath}{\log}
+\pgfplotstablegetcolsof{\log}
+\pgfmathtruncatemacro{\maxindex}{\pgfplotsretval-1}
+\def\offset{1}
+
+\begin{figure}[!h]
+\Centering
+\begin{tikzpicture}
+\begin{axis}[xlabel=ζ, ylabel=norm, xmode=log]
+    \foreach \index in {\offset,...,\maxindex}{
+        \pgfplotstablegetcolumnnamebyindex{\index}\of{\log}\to{\batch}
+
+        \addplot table [x=ζ, y index=\index] {\logpath};
+        \expandafter\addlegendentry\expandafter{\batch}
+    }
+\end{axis}
+\end{tikzpicture}
+\end{figure}
+
+\end{document}
