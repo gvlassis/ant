@@ -3,15 +3,8 @@ import os
 import argparse
 import data.utils
 import models.utils
+import utils
 
-def str_to_bool(string):
-    if string == "True":
-        boolean = True
-    elif string == "False":
-        boolean = False
-
-    return boolean
-    
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat")
 parser.add_argument("--dataset", choices=data.utils.DATASETS_TABULAR+data.utils.DATASETS_IMAGE+data.utils.DATASETS_TEXT, default="california")
@@ -26,10 +19,10 @@ parser.add_argument("--context", metavar="INT", type=int, default=128)
 parser.add_argument("--train_batches", metavar="INT", help="The number of batches used during training", type=int, default=50000)
 parser.add_argument("--val_batches", metavar="INT", help="The number of batches used during validation", type=int, default=100)
 parser.add_argument("--update_freq", metavar="INT", help="Every how many batches the train and the validation loss will be printed", type=int, default=50)
-parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=str_to_bool, default=False)
+parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
 parser.add_argument("--device_index", metavar="INT", help="CUDA device that stores the dataset and the models", type=int, default=0)
 parser.add_argument("--dtype", metavar="DTYPE", help="torch.DTYPE for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
-parser.add_argument("--compile", help="Use or not torch.compile()", type=str_to_bool, default=False)
+parser.add_argument("--compile", help="Use or not torch.compile()", type=utils.str_to_bool, default=False)
 args=parser.parse_args()
 
 device_type="cuda"
@@ -52,7 +45,7 @@ suffix=""
 for name, _ in model.named_parameters():
     suffix+=" %s.grad_mean %s.grad_top %s.grad_bot %s.grad_max %s.data_mean %s.data_top %s.data_bot %s.data_max" % (name, name, name, name, name, name, name, name)
 
-print("\x1b[1mtrain_batch train_loss val_loss\x1b[0m")
+print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %12.12s %12.12s\x1b[0m" % ("train_batch", "train_loss", "val_loss", "forward", "backward", "total"))
 with open(log_path,"w") as file:
     file.write("train_batch train_loss val_loss%s\n" % suffix)
 
@@ -64,6 +57,8 @@ if args.compile:
 min_train_loss = float("+inf")
 min_val_loss = float("+inf")
 for train_batch in range(args.train_batches):
+    total_start = utils.get_sync_time(device)
+
     try:
         batch_train_X, batch_train_Y = next(train_iterator)
     except (NameError, StopIteration):
@@ -72,14 +67,22 @@ for train_batch in range(args.train_batches):
 
     model.train()
     with torch.autocast(device_type=device_type, dtype=args.dtype), torch.cuda.device(args.device_index):
+        forward_start = utils.get_sync_time(device)
         batch_train_Y_ = model(data.utils.transform(args.dataset, batch_train_X))
         
         train_loss = data.utils.get_loss(args.dataset, batch_train_Y_, batch_train_Y)
+        forward_end = utils.get_sync_time(device)
 
     optimizer.zero_grad()
+    backward_start = utils.get_sync_time(device)
     scaler.scale(train_loss).backward()
+    backward_end = utils.get_sync_time(device)
+
+    total_end = utils.get_sync_time(device)
 
     if train_batch%args.update_freq==0:
+        train_batch_decorated = "%12.12s" % train_batch
+        
         val_loss_sum = 0
         for _ in range(args.val_batches):
             try:
@@ -101,15 +104,19 @@ for train_batch in range(args.train_batches):
         if val_loss < min_val_loss:
             min_val_loss = val_loss
             if args.save_model: torch.save(model.state_dict(), model_path)
-            val_loss_decorated = "\x1b[36;1m%f\x1b[0m" % val_loss
+            val_loss_decorated = "\x1b[36;1m%12.12s\x1b[0m" % ("%f" % val_loss)
         else:
-            val_loss_decorated = "%f" % val_loss
+            val_loss_decorated = "%12.12s" % ("%f" % val_loss)
 
         if train_loss.item() < min_train_loss:
             min_train_loss = train_loss.item()
-            train_loss_decorated = "\x1b[35;1m%f\x1b[0m" % train_loss.item()
+            train_loss_decorated = "\x1b[35;1m%12.12s\x1b[0m" % ("%f" % train_loss.item())
         else:
-            train_loss_decorated = "%f" % train_loss.item()
+            train_loss_decorated = "%12.12s" % ("%f" % train_loss.item())
+    
+        forward_decorated = "%12.12s" % utils.us_to_human_friendly(forward_end-forward_start)
+        backward_decorated = "%12.12s" % utils.us_to_human_friendly(backward_end-backward_start)
+        total_decorated = "\x1b[33;3m%12.12s\x1b[0m" % utils.us_to_human_friendly(total_end-total_start)
 
         suffix=""
         for name, parameter in model.named_parameters():
@@ -138,8 +145,8 @@ for train_batch in range(args.train_batches):
             data_max = parameter_data.max().item()
 
             suffix+=" %f %f %f %f %f %f %f %f" % (grad_mean, grad_top, grad_bot, grad_max, data_mean, data_top, data_bot, data_max)
-
-        print("%d %s %s" % (train_batch, train_loss_decorated, val_loss_decorated))
+        
+        print("%s %s %s %s %s %s" % (train_batch_decorated, train_loss_decorated, val_loss_decorated, forward_decorated, backward_decorated, total_decorated))
         with open(log_path,"a") as file:
             file.write("%d %f %f%s\n" % (train_batch, train_loss.item(), val_loss, suffix))
 
