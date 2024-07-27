@@ -64,3 +64,7 @@ def us_to_human_friendly(μs):
         human_friendly = "%dμs" % μs
 
     return human_friendly
+
+def dataset_iterator(dataset, batch_size):
+    for i in range(0, len(dataset), batch_size):
+        yield dataset[i:i+batch_size]["text"]
