@@ -16,6 +16,9 @@ def str_to_bool(string):
 
     return boolean
 
+def str_to_list(string):
+    return string.split(",")
+
 # Time logging causes negligible performance impact (~3%)
 def get_sync_time(device):
     torch.cuda.synchronize(device)
