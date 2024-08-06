@@ -7,7 +7,7 @@ from . import mup
 
 FAMILIES=["mlp", "vgg", "vit", "transformer"]
 
-def get_model_optimizer(family, parametrization, ζ, device, c, k, weight_decay):
+def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_decay, device):
     if family=="mlp":
         if parametrization=="sp":
             model = mlp.MLP3L(8, 16*ζ, 16*ζ, 1).to(device)
@@ -31,10 +31,10 @@ def get_model_optimizer(family, parametrization, ζ, device, c, k, weight_decay)
 
     elif family=="transformer":
         if parametrization=="sp":
-            model = transformer.Transformer(d=32*ζ).to(device)
+            model = transformer.Transformer(vocab_size=vocab_size, d=32*ζ).to(device)
         elif parametrization=="mup":
-            proxy = transformer.Transformer(d=32, scale=1/32).to(device)
-            target = transformer.Transformer(d=32*ζ, scale=1/(32*ζ)).to(device)
+            proxy = transformer.Transformer(vocab_size=vocab_size, d=32, scale=1/32).to(device)
+            target = transformer.Transformer(vocab_size=vocab_size, d=32*ζ, scale=1/(32*ζ)).to(device)
 
     if parametrization=="sp":
         mup.init_sp(model, c)

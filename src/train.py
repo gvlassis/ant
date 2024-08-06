@@ -1,28 +1,29 @@
 import torch
 import os
 import argparse
-import data.utils
-import models.utils
+import data.utils_data
+import models.utils_models
 import utils
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat")
-parser.add_argument("--dataset", choices=data.utils.DATASETS_TABULAR+data.utils.DATASETS_IMAGE+data.utils.DATASETS_TEXT, default="california")
-parser.add_argument("--family", choices=models.utils.FAMILIES, default="mlp")
+parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
+parser.add_argument("--vocab_size", type=int, default=50257)
+parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
 parser.add_argument("--parametrization", choices=["sp", "mup"], default="mup")
-parser.add_argument("--ζ", metavar="INT", help="Width scaling factor", type=int, default=8)
-parser.add_argument("--c", metavar="FLOAT", help="Initial standard deviation coefficient", type=float, default=1/10)
-parser.add_argument("--k", metavar="FLOAT", help="Learning rate", type=float, default=5e-4)
-parser.add_argument("--weight_decay", metavar="FLOAT", type=float, default=0)
-parser.add_argument("--batch_size", metavar="INT", type=int, default=16)
-parser.add_argument("--context", metavar="INT", type=int, default=128)
-parser.add_argument("--train_batches", metavar="INT", help="The number of batches used during training", type=int, default=50000)
-parser.add_argument("--val_batches", metavar="INT", help="The number of batches used during validation", type=int, default=100)
-parser.add_argument("--update_freq", metavar="INT", help="Every how many batches the train and the validation loss will be printed", type=int, default=50)
-parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
-parser.add_argument("--device_index", metavar="INT", help="CUDA device that stores the dataset and the models", type=int, default=0)
-parser.add_argument("--dtype", metavar="DTYPE", help="torch.DTYPE for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
+parser.add_argument("--ζ", help="Width scaling factor", type=int, default=8)
+parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=1/10)
+parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
+parser.add_argument("--weight_decay", type=float, default=0)
+parser.add_argument("--batch_size", type=int, default=16)
+parser.add_argument("--context", type=int, default=128)
+parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=50000)
+parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=100)
+parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=50)
+parser.add_argument("--device_index", help="CUDA device that stores the dataset and the models", type=int, default=0)
+parser.add_argument("--dtype", help="torch.DTYPE for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
 parser.add_argument("--compile", help="Use or not torch.compile()", type=utils.str_to_bool, default=False)
+parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
 args=parser.parse_args()
 
 device_type="cuda"
@@ -35,11 +36,11 @@ log_path = args.SUBPATH+".dat"
 model_path = args.SUBPATH+".pt"
 
 print("💾 Loading dataset")
-train_dataloader = data.utils.get_train_dataloader(args.dataset, device, args.batch_size, context=args.context)
-val_dataloader = data.utils.get_val_dataloader(args.dataset, device, args.batch_size, context=args.context)
+train_dataloader = data.utils_data.get_train_dataloader(args.dataset, device, args.batch_size, args.context)
+val_dataloader = data.utils_data.get_val_dataloader(args.dataset, device, args.batch_size, args.context)
 
 print("🧠 Initializing model")
-model, optimizer = models.utils.get_model_optimizer(args.family, args.parametrization, args.ζ, device, args.c, args.k, args.weight_decay)
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, device)
 
 suffix=""
 for name, _ in model.named_parameters():
@@ -68,9 +69,9 @@ for train_batch in range(args.train_batches):
     model.train()
     with torch.autocast(device_type=device_type, dtype=args.dtype), torch.cuda.device(args.device_index):
         forward_start = utils.get_sync_time(device)
-        batch_train_Y_ = model(data.utils.transform(args.dataset, batch_train_X))
+        batch_train_Y_ = model(data.utils_data.transform(args.dataset, batch_train_X))
         
-        train_loss = data.utils.get_loss(args.dataset, batch_train_Y_, batch_train_Y)
+        train_loss = data.utils_data.get_loss(args.dataset, batch_train_Y_, batch_train_Y)
         forward_end = utils.get_sync_time(device)
 
     optimizer.zero_grad()
@@ -93,9 +94,9 @@ for train_batch in range(args.train_batches):
 
             model.eval()
             with torch.no_grad(), torch.autocast(device_type=device_type, dtype=args.dtype), torch.cuda.device(args.device_index):
-                batch_val_Y_ = model(data.utils.transform(args.dataset, batch_val_X))
+                batch_val_Y_ = model(data.utils_data.transform(args.dataset, batch_val_X))
                 
-                batch_val_loss = data.utils.get_loss(args.dataset, batch_val_Y_, batch_val_Y)
+                batch_val_loss = data.utils_data.get_loss(args.dataset, batch_val_Y_, batch_val_Y)
 
             val_loss_sum += batch_val_loss.item()
 

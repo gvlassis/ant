@@ -1,6 +1,7 @@
 import torch
 import os
 import time
+import unicodedata
 
 def get_subdir(path):
     return [child for child in os.listdir(path) if os.path.isdir(path+"/"+child)]
@@ -15,9 +16,6 @@ def str_to_bool(string):
         boolean = False
 
     return boolean
-
-def str_to_list(string):
-    return string.split(",")
 
 # Time logging causes negligible performance impact (~3%)
 def get_sync_time(device):
@@ -68,6 +66,52 @@ def us_to_human_friendly(μs):
 
     return human_friendly
 
-def dataset_iterator(dataset, batch_size):
-    for i in range(0, len(dataset), batch_size):
-        yield dataset[i:i+batch_size]["text"]
+def topp(A, P):
+    A_values, A_indices = torch.sort(A, descending=True)
+
+    A_cumsum = torch.cumsum(A_values, dim=0)
+
+    indices = A_indices[A_cumsum < P]
+
+    indices = A_indices[:len(indices)+1]
+
+    return A[indices], indices
+
+def intersection(A, B):
+    uniques, counts = torch.cat((A, B)).unique(return_counts=True)
+    
+    return uniques[counts>1]
+
+def generate_text(starting_string, tokenizer, unk_id, eot_id, model, context=128, max_tokens=128, T=1, K=50, P=0.95):
+    string = starting_string
+
+    device = next(model.parameters()).device
+
+    ids = tokenizer.encode(starting_string).ids
+
+    while ( ids[-1] != eot_id ) and ( len(ids) < max_tokens ):
+
+        X = torch.tensor(ids[-context:])
+
+        model.eval()
+        with torch.no_grad():
+            Y = model( X.to(device) )
+        
+        Y[-1][unk_id] = -float("inf")
+
+        Y_ = torch.nn.functional.softmax(Y[-1]/T, dim=0)
+        
+        topk_indices = torch.topk(Y_, K).indices
+        topp_indices = topp(Y_, P)[1]
+        indices = intersection(topk_indices, topp_indices)
+        
+        Y__ = torch.zeros_like(Y_)
+        Y__[indices] = Y_[indices]
+
+        ids = ids + [torch.multinomial(Y__, num_samples=1).item()]
+    
+    string = tokenizer.decode(ids)
+
+    string = unicodedata.normalize("NFKC", string)
+    
+    print(string)

@@ -138,30 +138,3 @@ class Transformer(torch.nn.Module):
         Z = self.linear(Y_)
 
         return Z
-
-    def speak(self, starting_string, tokenizer, eot_id, context=1024):
-        string = starting_string
-        print(starting_string, end="")
-
-        ids = tokenizer.encode(starting_string).ids
-
-        while True:
-            X = torch.tensor(ids[-context:])
-
-            self.eval()
-            with torch.no_grad():
-                Y = self( X.to(device=next(self.parameters()).device) )
-
-            probs = torch.nn.functional.softmax(Y[-1], dim=0)
-
-            new_id = torch.multinomial(probs, num_samples=1).item()
-            ids = ids + [new_id]
-
-            if new_id == eot_id:
-                break
-            else:
-                new_substring = tokenizer.decode([new_id])
-                string = string + new_substring
-                print(new_substring, end="")
-
-        return string

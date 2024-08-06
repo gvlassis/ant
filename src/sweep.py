@@ -1,8 +1,6 @@
 import torch
 import os
 import argparse
-import data.utils
-import models.utils
 import time
 
 script_path = os.path.abspath(__file__)

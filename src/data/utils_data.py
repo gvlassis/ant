@@ -1,4 +1,6 @@
 import os
+import datasets
+datasets.logging.set_verbosity_error()
 import torch
 import torchvision.transforms.v2
 
@@ -7,9 +9,48 @@ data_path = os.path.dirname(script_path)
 src_path = os.path.dirname(data_path)
 root_path = os.path.dirname(src_path)
 
-DATASETS_TABULAR = ["california"]
+DATASETS_TABULAR = ["california_housing"]
 DATASETS_IMAGE = ["cifar10"]
-DATASETS_TEXT = ["shakespearefirstfolio", "minipile", "openwebtext"]
+DATASETS_TEXT = ["shakespearefirstfolio", "fineweb_edu", "ancient_greek_theatre", "culturay_el"]
+DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
+
+def get_splits(dataset):
+    if dataset=="california_housing":
+        train_dataset = datasets.load_dataset("gvlassis/california_housing", split="train", trust_remote_code=True)
+        val_dataset = datasets.load_dataset("gvlassis/california_housing", split="validation", trust_remote_code=True)
+        test_dataset = datasets.load_dataset("gvlassis/california_housing", split="test", trust_remote_code=True)
+    elif dataset=="cifar10":
+        cifar10_train_dataset = datasets.load_dataset("cifar10", split="train", trust_remote_code=True)
+        cifar10_train_dataset = cifar10_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
+        train_dataset = cifar10_train_dataset["train"]
+        val_dataset = cifar10_train_dataset["test"]
+        test_dataset = datasets.load_dataset("cifar10", split="test", trust_remote_code=True)
+    elif dataset=="shakespearefirstfolio":
+        train_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="train", trust_remote_code=True)
+        val_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="validation", trust_remote_code=True)
+        test_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="test", trust_remote_code=True)
+    elif dataset=="fineweb_edu":
+        fineweb_edu_train_dataset = datasets.load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", trust_remote_code=True)
+        fineweb_edu_train_dataset = fineweb_edu_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
+        train_val_dataset = fineweb_edu_train_dataset["train"]
+        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True)
+        train_dataset = train_val_dataset["train"]
+        val_dataset = train_val_dataset["test"]
+        test_dataset = fineweb_edu_train_dataset["test"]
+    elif dataset=="ancient_greek_theatre":
+        train_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="train", trust_remote_code=True)
+        val_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="validation", trust_remote_code=True)
+        test_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="test", trust_remote_code=True)
+    elif dataset=="culturay_el":
+        culturay_el_train_dataset = datasets.load_dataset("ontocord/CulturaY", name="el", split="train", trust_remote_code=True)
+        culturay_el_train_dataset = culturay_el_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
+        train_val_dataset = culturay_el_train_dataset["train"]
+        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True)
+        train_dataset = train_val_dataset["train"]
+        val_dataset = train_val_dataset["test"]
+        test_dataset = culturay_el_train_dataset["test"]
+
+    return train_dataset, val_dataset, test_dataset
 
 class TabularDataset(torch.utils.data.Dataset):
     # device is only used for initialization
@@ -99,17 +140,29 @@ class TextDataset(torch.utils.data.Dataset):
 def text_dataset_to_tensor(dataset, tokenizer, eot_id):
     cores = os.cpu_count()
     # PyTorch does not support uint16
-    dataset = dataset.map(lambda sample: {"ids": tokenizer.encode(sample["text"]).ids+[eot_id]}, remove_columns=["text"], num_proc=cores)
+    dataset = dataset.map(lambda sample: {"ids": tokenizer.encode(sample["text"], add_special_tokens=False).ids+[eot_id]}, remove_columns=["text"], num_proc=cores)
 
     ids = [element for sublist in dataset["ids"] for element in sublist]
 
-    tensor = torch.tensor(ids)
-    tensor = tensor + torch.iinfo(torch.int16).min
-    tensor = tensor.to(torch.int16)
+    X = torch.tensor(ids)
+    X = X + torch.iinfo(torch.int16).min
+    X = X.to(torch.int16)
 
-    print("\x1b[36m%d\x1b[0m tokens" % tensor.numel())
+    print("\x1b[36m%d\x1b[0m tokens" % X.numel())
 
-    return tensor
+    return X
+
+def dataset_to_tensors(dataset, tokenizer=None, eot_id=None):
+
+    # Auto-detection
+    if "img" in dataset.column_names:
+        tensors = image_dataset_to_tensors(dataset)
+    elif "text" in dataset.column_names:
+        tensors = (text_dataset_to_tensor(dataset, tokenizer, eot_id), None)
+    else:
+        tensors = tabular_dataset_to_tensors(dataset)
+
+    return tensors
 
 def get_train_dataloader(dataset, device, batch_size, context=1024):
     dataset_path = "%s/%s" % (root_path, dataset)

@@ -11,6 +11,13 @@
 \pgfplotstablegetcolsof{\log}
 \pgfmathtruncatemacro{\maxindex}{\pgfplotsretval-1}
 \def\offset{1}
+\pgfmathtruncatemacro{\batches}{\maxindex-\offset+1}
+
+\pgfmathtruncatemacro{\colorstep}{1000/(\batches-1)}
+\pgfplotsset{
+    colormap name=viridis,
+    cycle list={[colors of colormap={0,\colorstep,...,1000}]}
+}
 
 \begin{figure}[!h]
 \Centering
