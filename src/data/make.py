@@ -12,8 +12,7 @@ parser.add_argument("--eot_id", type=int, default=6)
 parser.add_argument("--context", type=int, default=128)
 args=parser.parse_args()
 
-if not os.path.isdir(args.DIR):
-    os.makedirs(args.DIR)
+os.makedirs(args.DIR, exist_ok=True)
 
 print("💾 Loading splits")
 train_dataset, val_dataset, test_dataset = utils_data.get_splits(args.dataset)

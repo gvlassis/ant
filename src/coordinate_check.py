@@ -22,8 +22,7 @@ args=parser.parse_args()
 device="cuda:0"
 
 subpath_dir = os.path.dirname(args.SUBPATH)
-if not os.path.isdir(subpath_dir):
-    os.makedirs(subpath_dir)
+os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
 
 print("💾 Loading dataset")

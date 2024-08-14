@@ -18,8 +18,8 @@ parser.add_argument("--weight_decay", type=float, default=0)
 parser.add_argument("--batch_size", type=int, default=16)
 parser.add_argument("--context", type=int, default=128)
 parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=50000)
-parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=100)
-parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=50)
+parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
+parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=200)
 parser.add_argument("--device_index", help="CUDA device that stores the dataset and the models", type=int, default=0)
 parser.add_argument("--dtype", help="torch.DTYPE for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
 parser.add_argument("--compile", help="Use or not torch.compile()", type=utils.str_to_bool, default=False)
@@ -30,8 +30,7 @@ device_type="cuda"
 device="%s:%d" % (device_type, args.device_index)
 
 subpath_dir = os.path.dirname(args.SUBPATH)
-if not os.path.isdir(subpath_dir):
-    os.makedirs(subpath_dir)
+os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
 model_path = args.SUBPATH+".pt"
 
