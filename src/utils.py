@@ -1,13 +1,40 @@
 import torch
 import os
+import re
 import time
 import unicodedata
+
+def get_files(root):
+    root = os.path.abspath(root)
+
+    files_abs = []
+    for directory, _, files_rel in os.walk(root):
+        for file in files_rel:
+            files_abs.append(directory+"/"+file)
+
+    return files_abs
+
+def match_list(_list, regex, group):
+    list_matched = set()
+    
+    for elem in _list:
+        match = re.search(regex, elem)
+        if match:
+            list_matched.add(match.group(group))
+
+    return list(list_matched)
 
 def get_subdir(path):
     return [child for child in os.listdir(path) if os.path.isdir(path+"/"+child)]
 
 def get_subdat(path):
     return [child[:-4] for child in os.listdir(path) if child[-4:]==".dat"]
+
+def numel(elem):
+    if type(elem) == list:
+        return sum(numel(subelem) for subelem in elem)
+    else:
+        return 1
 
 def str_to_bool(string):
     if string == "True":
