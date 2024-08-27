@@ -1,35 +1,74 @@
 \documentclass{article}
     \pagestyle{empty}
+
+\usepackage{geometry}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
 \usepackage{xstring}
+\usepackage{underscore}
 
 \begin{document}
 
 \pgfplotstableread{\logpath}{\log}
-\pgfplotstablegetcolsof{\log}
-\pgfmathtruncatemacro{\maxindex}{\pgfplotsretval-1}
-\def\offset{1}
-\pgfmathtruncatemacro{\batches}{\maxindex-\offset+1}
 
-\pgfmathtruncatemacro{\colorstep}{1000/(\batches-1)}
+\pgfplotstablegetcolsof{\log}
+\pgfmathtruncatemacro{\len}{\pgfplotsretval}
+\def\offset{1}
+\pgfmathtruncatemacro{\elems}{\len-\offset}
+\pgfmathtruncatemacro{\maxelem}{\elems-1}
+\pgfmathtruncatemacro{\groups}{2}
+\pgfmathtruncatemacro{\groupelems}{\len/\groups}
+\pgfmathtruncatemacro{\subgroupelems}{3}
+\pgfmathtruncatemacro{\groupsubgroups}{\groupelems/\subgroupelems}
+
+\pgfmathtruncatemacro{\colorstep}{1000/(\groupsubgroups-1)}
 \pgfplotsset{
-    colormap name=viridis,
-    cycle list={[colors of colormap={0,\colorstep,...,1000}]}
+    cycle multiindex* list={[colors of colormap={0,\colorstep,...,1000}] \nextlist mark=* \nextlist},
+    every axis plot/.append style={mark size=1.5pt}
 }
 
-\begin{figure}[!h]
+\begin{figure}[h!]
 \Centering
 \begin{tikzpicture}
-\begin{axis}[xlabel=ζ, ylabel=norm, xmode=log]
-    \foreach \index in {\offset,...,\maxindex}{
-        \pgfplotstablegetcolumnnamebyindex{\index}\of{\log}\to{\batch}
 
-        \addplot table [x=ζ, y index=\index] {\logpath};
-        \expandafter\addlegendentry\expandafter{\batch}
-    }
-\end{axis}
+    \begin{groupplot}[group style={rows=\groups, columns=\subgroupelems, horizontal sep=2.2cm, vertical sep=1.8cm},
+                      scale=0.5,
+                      legend to name=leg:coordinatecheck,
+                      legend columns=-1,
+                      xlabel=$\zeta$,
+                      xmode=log]
+
+        \pgfplotsforeachungrouped \elem in {0,...,\maxelem}{
+            \pgfmathtruncatemacro{\group}{mod(div(\elem,\groupelems),\groups)}
+            \pgfmathtruncatemacro{\subgroupelem}{mod(div(\elem,\groupsubgroups),\subgroupelems)}
+            \pgfmathtruncatemacro{\groupsubgroup}{mod(div(\elem,1),\groupsubgroups)}
+
+            \pgfmathtruncatemacro{\groupindex}{\offset+\group*\groupelems)}
+
+            \pgfmathtruncatemacro{\groupsubgroupindex}{\groupindex+\groupsubgroup*\subgroupelems}
+
+            \pgfmathtruncatemacro{\subgroupelemindex}{\groupsubgroupindex+\subgroupelem}
+            \pgfplotstablegetcolumnnamebyindex{\subgroupelemindex}\of{\log}\to{\subgroupelemname}
+            \StrBefore[1]{\subgroupelemname}{.}[\before]
+            \StrBehind[2]{\subgroupelemname}{.}[\after]
+            \edef \groupsubgroupname {\before.\after}
+            \StrBetween[1,2]{\subgroupelemname}{.}{.}[\subgroupelemname]
+            
+            \edef\tmp{
+                \noexpand\ifnum \groupsubgroup = 0
+                    \noexpand\nextgroupplot[title=\groupsubgroupname]
+                \noexpand\fi
+
+                \noexpand\addplot table [x=ζ, y index=\subgroupelemindex] {\logpath};
+                \noexpand\addlegendentry{batch=\subgroupelemname}
+            }\tmp
+        }
+    \end{groupplot}
+
+    \path (group c2r1.outer north east) -- node[above]{\pgfplotslegendfromname{leg:coordinatecheck}} (group c2r1.outer north west);
+
 \end{tikzpicture}
 \end{figure}
 

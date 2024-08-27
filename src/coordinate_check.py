@@ -9,14 +9,13 @@ parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat")
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
 parser.add_argument("--vocab_size", type=int, default=50257)
 parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
-parser.add_argument("--parametrization", choices=["sp", "mup"], default="mup")
 parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=1/10)
 parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
 parser.add_argument("--weight_decay", type=float, default=0)
 parser.add_argument("--batch_size", type=int, default=16)
 parser.add_argument("--context", type=int, default=128)
-parser.add_argument("--batches", help="The number of batches used", type=int, default=5)
-parser.add_argument("--update_freq", metavar="INT", help="Every how many batches the norm will be printed", type=int, default=1)
+parser.add_argument("--batches", help="The number of batches used", type=int, default=15)
+parser.add_argument("--update_freq", metavar="INT", help="Every how many batches the norm will be printed", type=int, default=3)
 args=parser.parse_args()
 
 device="cuda:0"
@@ -29,8 +28,9 @@ print("💾 Loading dataset")
 dataloader = data.utils_data.get_train_dataloader(args.dataset, device, args.batch_size, args.context)
 
 suffix=""
-for batch in range(0, args.batches, args.update_freq):
-    suffix+=" batch=%d" % batch
+for parametrization in models.utils_models.PARAMETRIZATIONS:
+    for batch in range(0, args.batches, args.update_freq):
+        suffix+=" %s.%d.out %s.%d.grad_mean %s.%d.data_mean" % (parametrization, batch, parametrization, batch, parametrization, batch)
 
 print("\x1b[1mζ%s\x1b[0m" % suffix)
 with open(log_path,"w") as file:
@@ -40,34 +40,34 @@ for ζ in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]:
     print("%d" % ζ, end="")
     with open(log_path,"a") as file:
         file.write("%d" % ζ)
-    
-    model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, ζ, args.c, args.k, args.weight_decay, device)
-    
-    for batch in range(args.batches):
-        try:
-            batch_X, batch_Y = next(iterator)
-        except (NameError, StopIteration):
-            iterator = iter(dataloader)
-            batch_X, batch_Y = next(iterator)
 
-        model.train()
+    for parametrization in models.utils_models.PARAMETRIZATIONS:
+        model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, parametrization, ζ, args.c, args.k, args.weight_decay, device)
         
-        batch_Y_ = model(data.utils_data.transform(args.dataset, batch_X))
+        for batch in range(args.batches):
+            try:
+                batch_X, batch_Y = next(iterator)
+            except (NameError, StopIteration):
+                iterator = iter(dataloader)
+                batch_X, batch_Y = next(iterator)
+
+            model.train()
             
-        loss = data.utils_data.get_loss(args.dataset, batch_Y_, batch_Y)
+            batch_Y_ = model(data.utils_data.transform(args.dataset, batch_X))
+                
+            loss = data.utils_data.get_loss(args.dataset, batch_Y_, batch_Y)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        if batch%args.update_freq==0:
-            # quantity = model.layer2.weight.grad.abs().mean().item()
-            # quantity = model.l2.weight.grad.abs().mean().item()
-            # quantity = model.l2.weight.data.abs().mean().item()
-            quantity = batch_Y_.abs().mean().item()
-            print(" %f" % quantity, end="")
-            with open(log_path,"a") as file:
-                file.write(" %f" % quantity)
+            if batch%args.update_freq==0:
+                out = batch_Y_.abs().mean().item()
+                grad_mean= model.l2.weight.grad.abs().mean().item()
+                data_mean = model.l2.weight.data.abs().mean().item()
+                print(" %f %f %f" % (out,grad_mean,data_mean), end="")
+                with open(log_path,"a") as file:
+                    file.write(" %f %f %f" % (out,grad_mean,data_mean))
 
     print()
     with open(log_path,"a") as file:
