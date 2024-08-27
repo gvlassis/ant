@@ -1,4 +1,5 @@
 import torch
+import huggingface_hub
 from . import mlp
 
 # Exposes scale and is faster (https://github.com/rasbt/LLMs-from-scratch/blob/main/ch03/02_bonus_efficient-multihead-attention/mha-implementations.ipynb) than PyTorch's torch.nn.MultiheadAttention
@@ -100,7 +101,7 @@ def sin_pos_enc(seq_len, d, device=None):
 # GPT2-M/m 1024 16 24
 # GPT2-L/l 1280 20 36
 # GPT2-XL/xl 1600 25 48
-class Transformer(torch.nn.Module):
+class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
     def __init__(self, vocab_size=50257, num_blocks=6, d=32, heads=8, scale=None, exp_factor=4, dropout=0):
         super().__init__()
 

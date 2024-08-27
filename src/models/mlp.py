@@ -1,6 +1,7 @@
 import torch
+import huggingface_hub
 
-class MLP2L(torch.nn.Module):
+class MLP2L(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
     def __init__(self, d0, d1, d2, dropout=0):
         super().__init__()
 
@@ -21,7 +22,7 @@ class MLP2L(torch.nn.Module):
 
         return y
 
-class MLP3L(torch.nn.Module):
+class MLP3L(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
     def __init__(self, d0, d1, d2, d3, dropout=0):
         super().__init__()
 

@@ -6,7 +6,7 @@ import models.utils_models
 import utils
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat")
+parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
 parser.add_argument("--vocab_size", type=int, default=50257)
 parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
@@ -32,7 +32,6 @@ device="%s:%d" % (device_type, args.device_index)
 subpath_dir = os.path.dirname(args.SUBPATH)
 os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
-model_path = args.SUBPATH+".pt"
 
 print("💾 Loading dataset")
 train_dataloader = data.utils_data.get_train_dataloader(args.dataset, device, args.batch_size, args.context)
@@ -103,7 +102,7 @@ for train_batch in range(args.train_batches):
 
         if val_loss < min_val_loss:
             min_val_loss = val_loss
-            if args.save_model: torch.save(model.state_dict(), model_path)
+            if args.save_model: model.save_pretrained(args.SUBPATH)
             val_loss_decorated = "\x1b[36;1m%12.12s\x1b[0m" % ("%f" % val_loss)
         else:
             val_loss_decorated = "%12.12s" % ("%f" % val_loss)
