@@ -1,4 +1,7 @@
-**__pycache__**
+**/__pycache__
+**/**.aux
+**/**.log
+**/**.pdf
 out
 california_housing
 cifar10
