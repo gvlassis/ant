@@ -18,23 +18,23 @@ class MHSA(torch.nn.Module):
         # We fuse Q, K and V (and different heads) for better parallelization, as well as less code
         self.QKV = torch.nn.Linear(d, 3*d, bias=False)
 
-    # (batches*)seq_len*d
+    # (batches*)context*d
     def forward(self, X):
-        # (batches*)seq_len*(3d)
+        # (batches*)context*(3d)
         QKV = self.QKV(X)
 
-        # (batches*)seq_len*3*heads*d_head
+        # (batches*)context*3*heads*d_head
         QKV = torch.unflatten(QKV, dim=-1, sizes=(3,self.heads,self.d_head))
-        # (batches*)3*heads*seq_len*d_head
+        # (batches*)3*heads*context*d_head
         QKV = torch.movedim(QKV, source=-4, destination=-2)
-        # (batches*)heads*seq_len*d_head
+        # (batches*)heads*context*d_head
         Q, K, V = torch.unbind(QKV, dim=-4)
 
-        # (batches*)heads*seq_len*d_head
+        # (batches*)heads*context*d_head
         Y = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=self.is_causal, scale=self.scale)
-        # (batches*)seq_len*heads*d_head
+        # (batches*)context*heads*d_head
         Y = torch.movedim(Y, source=-3, destination=-2)
-        # (batches*)seq_len*d
+        # (batches*)context*d
         Y = torch.flatten(Y, start_dim=-2, end_dim=-1)
 
         return Y
@@ -77,32 +77,78 @@ class TransformerDecBlock(TransformerBlock):
     def __init__(self, d, heads, scale=None, exp_factor=4, dropout=0):
         super().__init__(d, heads, True, scale, exp_factor, dropout)
 
-def sin_pos_enc(seq_len, d, device=None):
-    sin_pos_enc = torch.empty((seq_len, d), device=device)
+def get_sin(max_context, d):
+    # [pos=0, pos=1, ...]
+    poss = torch.arange(0., max_context)
+    # [i=0, i=1, ...]
+    js = torch.arange(0., d/2)
+    # [ω0, ω1, ...]
+    ωs = 1/10_000**(2*js/d)
+    
+    # [pos=0*ω0, pos=0*ω1, ...]
+    # [pos=1*ω0, pos=1*ω1, ...]
+    φs = poss[...,None] @ ωs[None,...]
+    
+    # max_context*d
+    sin = torch.empty((max_context, d))
+    sin[:,0::2] = torch.sin(φs)
+    sin[:,1::2] = torch.cos(φs)
 
-    ts = torch.arange(1.0, seq_len+1, dtype=torch.float32, device=device)
+    return sin
 
-    ks = torch.arange(1.0, int(d/2)+1, device=device)
-    ωs = 1/10000**(2*ks/d)
+def get_rot(max_context, d):
+    # [m=0, m=1, ...]
+    ms = torch.arange(0., max_context)
+    # [i=0, i=1, ...]
+    js = torch.arange(0., d/2)
+    # [θ0, θ1, ...]
+    θs = 1/10_000**(2*js/d)
+    
+    # [m=0*θ0, m=0*θ1, ...]
+    # [m=1*θ0, m=1*θ1, ...]
+    φs = ms[...,None] @ θs[None,...]
+    
+    # max_context*d/2
+    cos = torch.cos(φs)
+    sin = torch.sin(φs)
+    # max_context*d
+    cos = cos.repeat_interleave(2, dim=1)
+    sin = sin.repeat_interleave(2, dim=1)
+    
+    # 2*max_context*d
+    rot = torch.stack((cos,sin))
 
-    # seq_len*(d/2)
-    tsxωs = ts[:,None] @ ωs[None,:]
+    return rot
 
-    sin_pos_enc[:,0::2] = torch.sin(tsxωs)
-    sin_pos_enc[:,1::2] = torch.cos(tsxωs)
+def get_pos(pos_type, max_context, d):
+    if pos_type == "sin":
+        pos = get_sin(max_context, d)
+    elif pos_type == "learned":
+        pos = torch.randn((max_context, d))
+    elif pos_type == "rot":
+        pos = get_rot(max_context, d)
+    
+    return pos
 
-    return sin_pos_enc
+def apply_pos(pos_type, emb, pos): 
+    if pos_type in ("sin", "learned"):
+        X = emb+pos
+    elif pos_type == "rot":
+        # (batches*)context*d
+        emb_ = torch.empty_like(emb)
+        emb_[...,0::2] = -emb[...,1::2]
+        emb_[...,1::2] = emb[...,0::2]
 
-# model d heads num_blocks
-# xt 256 4 2
-# t 384 6 4
-# Vaswani/xs 512 8 6
-# GPT2-S/s 768 12 12
-# GPT2-M/m 1024 16 24
-# GPT2-L/l 1280 20 36
-# GPT2-XL/xl 1600 25 48
+        # context*d
+        cos = pos[0]
+        sin = pos[1]
+
+        X = emb*cos + emb_*sin
+        
+    return X
+
 class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
-    def __init__(self, vocab_size=50257, num_blocks=6, d=32, heads=8, scale=None, exp_factor=4, dropout=0):
+    def __init__(self, vocab_size=50257, num_blocks=6, d=32, heads=8, scale=None, exp_factor=4, dropout=0, pos_type="learned", max_context=128, all_pos=False):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -112,8 +158,17 @@ class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
         self.exp_factor = exp_factor
         self.scale = scale
         self.dropout = dropout
+        self.pos_type = pos_type
+        self.max_context = max_context
+        self.all_pos = all_pos
 
-        self.embeddings = torch.nn.Embedding(vocab_size, d)
+        self.emb = torch.nn.Embedding(vocab_size, d)
+        
+        pos = get_pos(pos_type, max_context, d)
+        if pos_type in ("sin", "rot"):
+            self.register_buffer("pos", pos)
+        elif pos_type == "learned":
+            self.pos = torch.nn.Parameter(pos)
 
         self.blocks = torch.nn.Sequential(*[TransformerDecBlock(d, heads, scale, exp_factor, dropout) for _ in range(num_blocks)])
 
@@ -121,21 +176,22 @@ class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
 
         self.linear = torch.nn.Linear(d, vocab_size)
 
-    # (batches*)seq_len
+    # (batches*)context
     def forward(self, ids):
-        seq_len = ids.shape[-1]
+        context = ids.shape[-1]
 
-        # (batches*)seq_len*d
-        embeddings = self.embeddings(ids)
-        pos_enc = sin_pos_enc(seq_len, self.d, ids.device)
+        # (batches*)context*d
+        X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
+        X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
 
-        X = torch.nn.functional.dropout(embeddings+pos_enc, p=self.dropout, training=self.training)
+        Y = X_
+        for block in self.blocks:
+            Y_ = block(Y)
+            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+            
+        Y__ = self.norm(Y_)
 
-        Y = self.blocks(X)
-
-        Y_ = self.norm(Y)
-
-        # (batches*)seq_len*vocab_size
-        Z = self.linear(Y_)
+        # (batches*)context*vocab_size
+        Z = self.linear(Y__)
 
         return Z

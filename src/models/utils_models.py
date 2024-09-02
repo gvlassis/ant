@@ -17,24 +17,30 @@ def get_fanin_fanout(parameter, kind, parent):
     elif isinstance(parent, torch.nn.LayerNorm) and (kind=="weight" or kind=="bias"):
         fanin = 1
         fanout = len(parameter)
-    elif kind=="class_emb":
-        fanin = 1
-        fanout = len(parameter)
-    elif isinstance(parent, torch.nn.Embedding):
-        fanin = parameter.shape[0]
-        fanout = parameter.shape[1]
+    else:
+        # class
+        if parameter.ndim == 1:
+            fanin = 1
+            fanout = len(parameter)
+        # emb, pos
+        elif parameter.ndim == 2:
+            fanin = parameter.shape[0]
+            fanout = parameter.shape[1]
 
     return fanin, fanout
 
-def get_c(kind, parent, c, target_fanin):
+def get_c(parameter, kind, parent, c, target_fanin):
     if isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and kind=="bias":
         c = 0
     elif isinstance(parent, torch.nn.LayerNorm) and (kind=="weight" or kind=="bias"):
         c = 0
-    elif kind=="class_emb":
-        c = 0.02*(target_fanin)**0.5
-    elif isinstance(parent, torch.nn.Embedding):
-        c = 0.02*(target_fanin)**0.5
+    else:
+        # class
+        if parameter.ndim == 1:
+            c = 0.02*(target_fanin)**0.5
+        # emb, pos
+        elif parameter.ndim == 2:
+            c = 0.02*(target_fanin)**0.5
 
     return c
 
@@ -69,7 +75,8 @@ def get_μ(kind, parent):
         μ = 1
     elif isinstance(parent, torch.nn.LayerNorm) and kind=="bias":
         μ = 0
-    elif kind=="class_emb":
+    # class
+    else:
         μ = 0
 
     return μ
@@ -99,9 +106,9 @@ def init_sp(model, c=1):
 
         if fanin==1:
             μ = get_μ(kind, parent)
-            torch.nn.init.normal_(parameter, mean=μ , std=get_c(kind, parent, c, fanin))
+            torch.nn.init.normal_(parameter, mean=μ , std=get_c(parameter, kind, parent, c, fanin))
         elif fanin>1:
-            torch.nn.init.normal_(parameter, mean=0 , std=get_c(kind, parent, c, fanin)/(fanin)**0.5)
+            torch.nn.init.normal_(parameter, mean=0 , std=get_c(parameter, kind, parent, c, fanin)/fanin**0.5)
 
 def init_mup(proxy, target, c=1):
     for parameter_name, target_parameter in target.named_parameters():
@@ -114,13 +121,13 @@ def init_mup(proxy, target, c=1):
         
         if target_fanin==1:
             μ = get_μ(kind, target_parent)
-            torch.nn.init.normal_(target_parameter, mean=μ , std=get_c(kind, target_parent, c, target_fanin))
+            torch.nn.init.normal_(target_parameter, mean=μ , std=get_c(target_parameter, kind, target_parent, c, target_fanin))
         elif target_fanin>1:
             s, c_const = get_s_c_const(proxy_fanin, target_fanin, proxy_fanout, target_fanout)
-            torch.nn.init.normal_(target_parameter, mean=0 , std=c_const*get_c(kind, target_parent, c, target_fanin)*s)
+            torch.nn.init.normal_(target_parameter, mean=0 , std=c_const*get_c(target_parameter, kind, target_parent, c, target_fanin)*s)
 
 class AdamW_mup(torch.optim.AdamW):
-    def __init__(self, proxy, target, k=0.001, weight_decay=0.01):
+    def __init__(self, proxy, target, k=0.001, weight_decay=0.0):
         params = []
 
         for parameter_name, target_parameter in target.named_parameters():
