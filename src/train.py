@@ -4,6 +4,8 @@ import argparse
 import data.utils_data
 import models.utils_models
 import utils
+import torchinfo
+import torchview
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
@@ -21,9 +23,11 @@ parser.add_argument("--train_batches", help="The number of batches used during t
 parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
 parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=200)
 parser.add_argument("--device_index", help="CUDA device that stores the dataset and the models", type=int, default=0)
-parser.add_argument("--dtype", help="torch.DTYPE for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
+parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
 parser.add_argument("--compile", help="Use or not torch.compile()", type=utils.str_to_bool, default=False)
 parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
+parser.add_argument("--info", help="Print or not information about the model", type=utils.str_to_bool, default=False)
+parser.add_argument("--graph", help="SUBPATH.", type=utils.str_to_bool, default=False)
 args=parser.parse_args()
 
 device_type="cuda"
@@ -32,6 +36,7 @@ device="%s:%d" % (device_type, args.device_index)
 subpath_dir = os.path.dirname(args.SUBPATH)
 os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
+graph_path = args.SUBPATH+".pdf"
 
 print("💾 Loading dataset")
 train_dataloader = data.utils_data.get_train_dataloader(args.dataset, device, args.batch_size, args.context)
@@ -39,6 +44,14 @@ val_dataloader = data.utils_data.get_val_dataloader(args.dataset, device, args.b
 
 print("🧠 Initializing model")
 model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, device)
+if args.info:
+    batch_X, _ = next(iter(train_dataloader))
+    input_data = data.utils_data.transform(args.dataset, batch_X)
+    torchinfo.summary(model, input_data=input_data, col_names=("input_size", "output_size", "num_params", "params_percent", "mult_adds"), col_width=18, depth=3)
+if args.graph:
+    batch_X, _ = next(iter(train_dataloader))
+    input_data = data.utils_data.transform(args.dataset, batch_X)
+    torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
 
 suffix=""
 for name, _ in model.named_parameters():
