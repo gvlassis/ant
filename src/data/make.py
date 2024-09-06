@@ -1,15 +1,14 @@
 import os
 import argparse
-import tokenizers
+import transformers
 import utils_data
 import torch
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("DIR", help="The directory which will contain train_X.pt, train_Y.pt, val_X.pt, val_Y.pt, test_X.pt, test_Y.pt", type=os.path.abspath)
 parser.add_argument("--dataset", choices=utils_data.DATASETS, default="ancient_greek_theatre")
-parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: None if x is None else tokenizers.Tokenizer.from_pretrained(x), default=None)
+parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: None if x is None else transformers.PreTrainedTokenizerFast.from_pretrained(x).backend_tokenizer, default=None)
 parser.add_argument("--eot_id", type=int, default=6)
-parser.add_argument("--context", type=int, default=128)
 args=parser.parse_args()
 
 os.makedirs(args.DIR, exist_ok=True)

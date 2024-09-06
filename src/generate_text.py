@@ -8,7 +8,7 @@ import utils
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("PATH", help="Path of the model to be used", type=os.path.abspath)
 parser.add_argument("--starting_string", help="The string that the model will continue", default="ΑΝΤΙΓΟΝΗ")
-parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=tokenizers.Tokenizer.from_pretrained ,default="gvlassis/culturay_el_32000")
+parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: transformers.PreTrainedTokenizerFast.from_pretrained(x).backend_tokenizer, default="gvlassis/culturay_el_32000")
 parser.add_argument("--unk_id", help="Unknown special token id", type=int, default=2)
 parser.add_argument("--eot_id", help="End-of-text special token id", type=int, default=6)
 parser.add_argument("--context", type=int, default=128)
