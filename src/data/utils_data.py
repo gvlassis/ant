@@ -11,7 +11,7 @@ root_path = os.path.dirname(src_path)
 
 DATASETS_TABULAR = ["california_housing"]
 DATASETS_IMAGE = ["cifar10"]
-DATASETS_TEXT = ["shakespearefirstfolio", "finewebedu", "ancient_greek_theatre", "culturay_el"]
+DATASETS_TEXT = ["shakespearefirstfolio", "openwebtext", "finewebedu", "ancient_greek_theatre", "culturay_el"]
 DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
 
 def get_splits(dataset):
@@ -20,15 +20,23 @@ def get_splits(dataset):
         val_dataset = datasets.load_dataset("gvlassis/california_housing", split="validation", trust_remote_code=True)
         test_dataset = datasets.load_dataset("gvlassis/california_housing", split="test", trust_remote_code=True)
     elif dataset=="cifar10":
-        cifar10_train_dataset = datasets.load_dataset("cifar10", split="train", trust_remote_code=True)
+        cifar10_train_dataset = datasets.load_dataset("uoft-cs/cifar10", split="train", trust_remote_code=True)
         cifar10_train_dataset = cifar10_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
         train_dataset = cifar10_train_dataset["train"]
         val_dataset = cifar10_train_dataset["test"]
-        test_dataset = datasets.load_dataset("cifar10", split="test", trust_remote_code=True)
+        test_dataset = datasets.load_dataset("uoft-cs/cifar10", split="test", trust_remote_code=True)
     elif dataset=="shakespearefirstfolio":
         train_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="train", trust_remote_code=True)
         val_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="validation", trust_remote_code=True)
         test_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="test", trust_remote_code=True)
+    elif dataset=="openwebtext":
+        openwebtext_train_dataset = datasets.load_dataset("Skylion007/openwebtext", split="train", trust_remote_code=True)
+        openwebtext_train_dataset = openwebtext_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
+        train_val_dataset = openwebtext_train_dataset["train"]
+        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True)
+        train_dataset = train_val_dataset["train"]
+        val_dataset = train_val_dataset["test"]
+        test_dataset = openwebtext_train_dataset["test"]
     elif dataset=="finewebedu":
         finewebedu_train_dataset = datasets.load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", trust_remote_code=True)
         finewebedu_train_dataset = finewebedu_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
