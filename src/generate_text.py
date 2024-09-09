@@ -4,6 +4,7 @@ import tokenizers
 import torch
 import models.transformer
 import utils
+import transformers
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("PATH", help="Path of the model to be used", type=os.path.abspath)
@@ -18,11 +19,10 @@ parser.add_argument("--K", help="Top-K sampling", type=int, default=50)
 parser.add_argument("--P", help="Top-P sampling", type=int, default=0.95)
 args=parser.parse_args()
 
-device="cpu"
+device="cuda"
 
 print("🧠 Initializing model")
-ζ = 8
-model = models.transformer.Transformer(vocab_size=args.tokenizer.get_vocab_size(), d=32*ζ, scale=1/(32*ζ)).to(device)
-model.load_state_dict(torch.load(args.PATH, map_location=device))
+ζ = 24
+model = models.transformer.Transformer.from_pretrained(args.PATH).to(device)
 
 utils.generate_text(args.starting_string, args.tokenizer, args.unk_id, args.eot_id, model, args.context, args.max_tokens, args.T, args.K, args.P)

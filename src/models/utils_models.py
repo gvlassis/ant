@@ -144,7 +144,7 @@ class AdamW_mup(torch.optim.AdamW):
 
         super().__init__(params)
 
-def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_decay, device):
+def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_decay, max_context, device):
     if family=="mlp":
         if parametrization=="sp":
             model = mlp.MLP3L(8, 16*ζ, 16*ζ, 1).to(device)
@@ -168,10 +168,10 @@ def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_de
 
     elif family=="transformer":
         if parametrization=="sp":
-            model = transformer.Transformer(vocab_size=vocab_size, d=32*ζ).to(device)
+            model = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, d=32*ζ, heads=8, scale=None, exp_factor=4, dropout=0, pos_type="sin", max_context=max_context, all_pos=False).to(device)
         elif parametrization=="mup":
-            proxy = transformer.Transformer(vocab_size=vocab_size, d=32, scale=1/32).to(device)
-            target = transformer.Transformer(vocab_size=vocab_size, d=32*ζ, scale=1/(32*ζ)).to(device)
+            proxy = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, d=32, heads=8, scale=1/32, exp_factor=4, dropout=0, pos_type="sin", max_context=max_context, all_pos=False).to(device)
+            target = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, d=32*ζ, heads=8, scale=1/(32*ζ), exp_factor=4, dropout=0, pos_type="sin", max_context=max_context, all_pos=False).to(device)
 
     if parametrization=="sp":
         init_sp(model, c)

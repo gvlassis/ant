@@ -148,7 +148,7 @@ def apply_pos(pos_type, emb, pos):
     return X
 
 class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
-    def __init__(self, vocab_size=50257, num_blocks=6, d=32, heads=8, scale=None, exp_factor=4, dropout=0, pos_type="learned", max_context=128, all_pos=False):
+    def __init__(self, vocab_size=50257, num_blocks=6, d=32, heads=8, scale=None, exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False):
         super().__init__()
 
         self.vocab_size = vocab_size

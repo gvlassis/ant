@@ -43,7 +43,7 @@ train_dataloader = data.utils_data.get_train_dataloader(args.dataset, device, ar
 val_dataloader = data.utils_data.get_val_dataloader(args.dataset, device, args.batch_size, args.context)
 
 print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, device)
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, args.context, device)
 if args.info:
     batch_X, _ = next(iter(train_dataloader))
     input_data = data.utils_data.transform(args.dataset, batch_X)

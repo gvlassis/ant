@@ -173,8 +173,10 @@ def get_train_dataloader(dataset, device, batch_size, context=1024):
         train_dataset = ImageDataset(dataset_path, split="train", device=device)
     elif dataset in DATASETS_TEXT:
         train_dataset = TextDataset(dataset_path, split="train", device=device, context=context)
-
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    
+    # shuffle=True hangs
+    train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True)
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
 
     return train_dataloader
 
@@ -187,8 +189,10 @@ def get_val_dataloader(dataset, device, batch_size, context=1024):
         val_dataset = ImageDataset(dataset_path, split="val", device=device)
     elif dataset in DATASETS_TEXT:
         val_dataset = TextDataset(dataset_path, split="val", device=device, context=context)
-
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+    
+    # shuffle=True hangs
+    val_sampler = torch.utils.data.RandomSampler(val_dataset, replacement=True)
+    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True)
 
     return val_dataloader
 
