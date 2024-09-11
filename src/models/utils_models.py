@@ -30,17 +30,20 @@ def get_fanin_fanout(parameter, kind, parent):
     return fanin, fanout
 
 def get_c(parameter, kind, parent, c, target_fanin):
-    if isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and kind=="bias":
+    if isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and kind=="weight":
+        c = c
+    elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and kind=="bias":
         c = 0
     elif isinstance(parent, torch.nn.LayerNorm) and (kind=="weight" or kind=="bias"):
         c = 0
     else:
         # class
         if parameter.ndim == 1:
-            c = 0.02*(target_fanin)**0.5
+            c = 0.02
         # emb, pos
         elif parameter.ndim == 2:
-            c = 0.02*(target_fanin)**0.5
+            # target_fanin does NOT scale with width
+            c = 0.02*(target_fanin**0.5)
 
     return c
 
@@ -97,18 +100,27 @@ def get_γ_γ_const(proxy_fanin, target_fanin, proxy_fanout, target_fanout):
         
     return γ, γ_const
 
-def init_sp(model, c=1): 
+def init_sp(model, c=1, verbose=False):
+    if verbose: print("\x1b[1m%36.36s %6.6s %8.8s %6.6s %8.8s\x1b[0m" % ("parameter_name", "fanin", "fanout", "mean", "std"))
     for parameter_name, parameter in model.named_parameters():
         parent_name,_,kind = parameter_name.rpartition(".")
         parent = model.get_submodule(parent_name)
         
-        fanin, _ = get_fanin_fanout(parameter, kind, parent)
+        fanin, fanout = get_fanin_fanout(parameter, kind, parent)
 
         if fanin==1:
-            μ = get_μ(kind, parent)
-            torch.nn.init.normal_(parameter, mean=μ , std=get_c(parameter, kind, parent, c, fanin))
+            mean = get_μ(kind, parent)
+            std = get_c(parameter, kind, parent, c, fanin)
         elif fanin>1:
-            torch.nn.init.normal_(parameter, mean=0 , std=get_c(parameter, kind, parent, c, fanin)/fanin**0.5)
+            mean = 0
+            std = get_c(parameter, kind, parent, c, fanin)/fanin**0.5
+
+        torch.nn.init.normal_(parameter, mean=mean , std=std)
+        
+        if verbose:
+            mean_decorated = "%6.6s" % ("%f" % mean)
+            std_decorated = "%8.8s" % ("%f" % std)
+            print("%36.36s %6.6s %8.8s %6.6s %8.8s" % (parameter_name, fanin, fanout, mean, std))
 
 def init_mup(proxy, target, c=1):
     for parameter_name, target_parameter in target.named_parameters():
@@ -144,7 +156,7 @@ class AdamW_mup(torch.optim.AdamW):
 
         super().__init__(params)
 
-def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_decay, max_context, device):
+def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_decay, max_context, device, verbose_init=False):
     if family=="mlp":
         if parametrization=="sp":
             model = mlp.MLP3L(8, 16*ζ, 16*ζ, 1).to(device)
@@ -174,7 +186,7 @@ def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, weight_de
             target = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, d=32*ζ, heads=8, scale=1/(32*ζ), exp_factor=4, dropout=0, pos_type="sin", max_context=max_context, all_pos=False).to(device)
 
     if parametrization=="sp":
-        init_sp(model, c)
+        init_sp(model, c, verbose=verbose_init)
         optimizer = torch.optim.AdamW(model.parameters(), lr=k, weight_decay=weight_decay)
         return model, optimizer
     elif parametrization=="mup":

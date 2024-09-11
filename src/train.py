@@ -24,10 +24,11 @@ parser.add_argument("--val_batches", help="The number of batches used during val
 parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=200)
 parser.add_argument("--device_index", help="CUDA device that stores the dataset and the models", type=int, default=0)
 parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
-parser.add_argument("--compile", help="Use or not torch.compile()", type=utils.str_to_bool, default=False)
+parser.add_argument("--compile", help="Use torch.compile()", type=utils.str_to_bool, default=False)
 parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
-parser.add_argument("--info", help="Print or not information about the model", type=utils.str_to_bool, default=False)
-parser.add_argument("--graph", help="SUBPATH.", type=utils.str_to_bool, default=False)
+parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=False)
+parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
+parser.add_argument("--verbose_init", help="Print initialization information", type=utils.str_to_bool, default=False)
 args=parser.parse_args()
 
 device_type="cuda"
@@ -43,7 +44,7 @@ train_dataloader = data.utils_data.get_train_dataloader(args.dataset, device, ar
 val_dataloader = data.utils_data.get_val_dataloader(args.dataset, device, args.batch_size, args.context)
 
 print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, args.context, device)
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, args.context, device, args.verbose_init)
 if args.info:
     batch_X, _ = next(iter(train_dataloader))
     input_data = data.utils_data.transform(args.dataset, batch_X)
