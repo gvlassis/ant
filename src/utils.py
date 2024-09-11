@@ -5,6 +5,8 @@ import time
 import unicodedata
 import copy
 import plotext
+import warnings
+warnings.filterwarnings("ignore", module="torch.optim.lr_scheduler")
 
 def get_files(root):
     root = os.path.abspath(root)
