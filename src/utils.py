@@ -3,6 +3,8 @@ import os
 import re
 import time
 import unicodedata
+import copy
+import plotext
 
 def get_files(root):
     root = os.path.abspath(root)
@@ -142,3 +144,23 @@ def generate_text(starting_string, tokenizer, unk_id, eot_id, model, context=128
     string = unicodedata.normalize("NFKC", string)
     
     print(string)
+
+def print_schedule(train_batches, scheduler):
+    scheduler = copy.deepcopy(scheduler)
+    
+    lrs = []
+    for train_batch in range(train_batches):
+        # optimizer.step()
+        lrs.append(scheduler.get_last_lr()[0])
+        scheduler.step()
+
+    plotext.plot_size(width=plotext.terminal_width()/2, height=plotext.terminal_height()/4)
+    plotext.theme("clear")
+    plotext.xlabel("train_batch")
+    plotext.xaxes(lower=True, upper=False)
+    plotext.yaxes(left=True, right=False)
+    plotext.xticks([0,train_batches*0.25,train_batches*0.5,train_batches*0.75,train_batches])
+    
+    plotext.plot(range(train_batches), lrs, marker="braille", label="lr", color="blue+")
+    plotext.show()
+    plotext.clear_figure()
