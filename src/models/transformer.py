@@ -1,22 +1,29 @@
 import torch
 import huggingface_hub
 from . import mlp
+from math import sqrt
 
 # Exposes scale and is faster (https://github.com/rasbt/LLMs-from-scratch/blob/main/ch03/02_bonus_efficient-multihead-attention/mha-implementations.ipynb) than PyTorch's torch.nn.MultiheadAttention
 class MHSA(torch.nn.Module):
     # Remember that d_q=d_k. Moreover, assume that d_x=d_q=d_v:=d
-    # scale=None <=> scale=1/d**0.5 (typical)
-    def __init__(self, d, heads, is_causal, scale=None):
+    def __init__(self, heads, d_head, is_causal, scale_type="1/sqrt(d)"):
         super().__init__()
 
-        self.d = d
         self.heads = heads
-        self.d_head = int(d/heads)
+        self.d_head = d_head
+        self.d = heads * d_head
         self.is_causal = is_causal
-        self.scale = scale
+        self.scale_type = scale_type
+        if scale_type=="1/sqrt(d)":
+            self.scale = 1/sqrt(self.d)
+        elif scale_type=="1/d":
+            self.scale = 1/self.d
 
         # We fuse Q, K and V (and different heads) for better parallelization, as well as less code
-        self.QKV = torch.nn.Linear(d, 3*d, bias=False)
+        self.QKV = torch.nn.Linear(self.d, 3*self.d, bias=False)
+        
+        # First time I implemented MHSA, I forgot the outputs' projection :P
+        self.O = torch.nn.Linear(self.d, self.d, bias=False)
 
     # (batches*)context*d
     def forward(self, X):
@@ -24,11 +31,11 @@ class MHSA(torch.nn.Module):
         QKV = self.QKV(X)
 
         # (batches*)context*3*heads*d_head
-        QKV = torch.unflatten(QKV, dim=-1, sizes=(3,self.heads,self.d_head))
+        QKV = QKV.unflatten(dim=-1, sizes=(3, self.heads, self.d_head))
         # (batches*)3*heads*context*d_head
-        QKV = torch.movedim(QKV, source=-4, destination=-2)
+        QKV = QKV.movedim(-4,-2)
         # (batches*)heads*context*d_head
-        Q, K, V = torch.unbind(QKV, dim=-4)
+        Q, K, V = QKV.unbind(-4)
 
         # (batches*)heads*context*d_head
         Y = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=self.is_causal, scale=self.scale)
@@ -37,26 +44,36 @@ class MHSA(torch.nn.Module):
         # (batches*)context*d
         Y = torch.flatten(Y, start_dim=-2, end_dim=-1)
 
+        Y = self.O(Y)
+
         return Y
 
 # Pre-Norm
 class TransformerBlock(torch.nn.Module):
-    def __init__(self, d, heads, is_causal, scale=None, exp_factor=4, dropout=0):
+    def __init__(self, heads, d_head, is_causal, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
         super().__init__()
 
-        self.d = d
         self.heads = heads
+        self.d_head = d_head
+        self.d = heads * d_head
         self.is_causal = is_causal
-        self.scale = scale
+        self.scale_type = scale_type
         self.exp_factor = exp_factor
-        self.d_hidden = exp_factor*d
+        self.d_hidden = exp_factor*self.d
         self.dropout = dropout
+        self.norm_type = norm_type
+        self.bias = bias
+        self.act = act
+        self.l1_type = l1_type
 
-        self.norm1 = torch.nn.LayerNorm(d)
-        self.mhsa = MHSA(d, heads, is_causal, scale)
-
-        self.norm2 = torch.nn.LayerNorm(d)
-        self.mlp = mlp.MLP2L(d, self.d_hidden, d)
+        self.mhsa = MHSA(heads, d_head, is_causal, scale_type)
+        if norm_type=="layer":
+            self.norm1 = torch.nn.LayerNorm(self.d, bias=bias)
+            self.norm2 = torch.nn.LayerNorm(self.d, bias=bias)
+        elif norm_type=="rms":
+            self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+            self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
 
     def forward(self, X):
         Y = self.mhsa(self.norm1(X))
@@ -70,12 +87,12 @@ class TransformerBlock(torch.nn.Module):
         return Z__
 
 class TransformerEncBlock(TransformerBlock):
-    def __init__(self, d, heads, scale=None, exp_factor=4, dropout=0):
-        super().__init__(d, heads, False, scale, exp_factor, dropout)
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
+        super().__init__(heads, d_head, False, scale_type, exp_factor, dropout, norm_type, bias, act, l1_type)
 
 class TransformerDecBlock(TransformerBlock):
-    def __init__(self, d, heads, scale=None, exp_factor=4, dropout=0):
-        super().__init__(d, heads, True, scale, exp_factor, dropout)
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
+        super().__init__(heads, d_head, True, scale_type, exp_factor, dropout, norm_type, bias, act, l1_type)
 
 def get_sin(max_context, d):
     # [pos=0, pos=1, ...]
@@ -148,33 +165,41 @@ def apply_pos(pos_type, emb, pos):
     return X
 
 class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
-    def __init__(self, vocab_size=50257, num_blocks=6, d=32, heads=8, scale=None, exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False):
+    def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
         super().__init__()
 
         self.vocab_size = vocab_size
         self.num_blocks = num_blocks
-        self.d = d
         self.heads = heads
+        self.d_head = d_head
+        self.d = heads * d_head
         self.exp_factor = exp_factor
-        self.scale = scale
+        self.scale_type = scale_type
         self.dropout = dropout
         self.pos_type = pos_type
         self.max_context = max_context
         self.all_pos = all_pos
+        self.norm_type = norm_type
+        self.bias = bias
+        self.act = act
+        self.l1_type = l1_type
 
-        self.emb = torch.nn.Embedding(vocab_size, d)
+        self.emb = torch.nn.Embedding(vocab_size, self.d)
         
-        pos = get_pos(pos_type, max_context, d)
+        pos = get_pos(pos_type, max_context, self.d)
         if pos_type in ("sin", "rot"):
             self.register_buffer("pos", pos)
         elif pos_type == "learned":
             self.pos = torch.nn.Parameter(pos)
-
-        self.blocks = torch.nn.Sequential(*[TransformerDecBlock(d, heads, scale, exp_factor, dropout) for _ in range(num_blocks)])
-
-        self.norm = torch.nn.LayerNorm(d)
-
-        self.linear = torch.nn.Linear(d, vocab_size)
+        
+        self.blocks = torch.nn.Sequential(*[TransformerDecBlock(heads, d_head, scale_type, exp_factor, dropout, norm_type, bias, act, l1_type) for _ in range(num_blocks)])
+        
+        if norm_type=="layer":
+            self.norm = torch.nn.LayerNorm(self.d, bias=bias)
+        elif norm_type=="rms":
+            self.norm = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+        
+        self.linear = torch.nn.Linear(self.d, vocab_size, bias=False)
 
     # (batches*)context
     def forward(self, ids):

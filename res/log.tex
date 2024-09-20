@@ -5,94 +5,100 @@
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
     \usepgfplotslibrary{fillbetween}
+    \usepgfplotslibrary{groupplots}
 \usepackage{xstring}
 \usepackage{underscore}
+\usepackage{utils}
 
 \begin{document}
 
 \begin{figure}[!h]
-    \Centering]
+\Centering
 \begin{tikzpicture}
-\begin{axis}[xlabel=train\_batch, ylabel=loss, no marks]
+\begin{groupplot}[group style={rows=2, columns=2, horizontal sep=2.2cm, vertical sep=1.8cm},
+                  no marks]
+    \nextgroupplot[title=schedule, xlabel=train_batch, ylabel=k]
+    \addplot table [x=train_batch, y=k] {\logpath};
+
+    \nextgroupplot[xlabel=train_batch, ylabel=loss]
     \addplot table [x=train_batch, y=train_loss] {\logpath};
     \addlegendentry{train}
     \addplot table [x=train_batch, y=val_loss] {\logpath};
     \addlegendentry{val}
-\end{axis}
+
+    \nextgroupplot[xlabel=train_time, ylabel=loss]
+    \addplot table [x=train_time, y=train_loss] {\logpath};
+    \addlegendentry{train}
+    \addplot table [x=train_time, y=val_loss] {\logpath};
+    \addlegendentry{val}
+\end{groupplot}
 \end{tikzpicture}
 \end{figure}
 
 \pgfplotstableread{\logpath}{\log}
+
 \pgfplotstablegetcolsof{\log}
-\def\offset{3}
-\def\grouplen{8}
-\pgfmathtruncatemacro{\maxgroupindex}{((\pgfplotsretval-\offset)/\grouplen)-1}
+\pgfmathtruncatemacro{\len}{\pgfplotsretval}
+\def\offset{5}
+\pgfmathtruncatemacro{\elems}{\len-\offset}
+\pgfmathtruncatemacro{\maxelem}{\elems-1}
+\pgfmathtruncatemacro{\groupelems}{8}
+\pgfmathtruncatemacro{\groups}{\len/\groupelems}
+\pgfmathtruncatemacro{\groups}{\len/\groupelems}
+\pgfmathtruncatemacro{\groups}{\len/\groupelems}
+\pgfmathtruncatemacro{\maxgroup}{\groups-1}
 
-\foreach \groupindex in {0,...,\maxgroupindex}{
-    \pgfmathtruncatemacro{\gradmeanindex}{\offset+\groupindex*\grouplen}
-    \pgfmathtruncatemacro{\gradtopindex}{\gradmeanindex+1}
-    \pgfmathtruncatemacro{\gradbotindex}{\gradmeanindex+2}
-    \pgfmathtruncatemacro{\gradmaxindex}{\gradmeanindex+3}
-    
-    \pgfmathtruncatemacro{\datameanindex}{\gradmeanindex+4}
-    \pgfmathtruncatemacro{\datatopindex}{\gradmeanindex+5}
-    \pgfmathtruncatemacro{\databotindex}{\gradmeanindex+6}
-    \pgfmathtruncatemacro{\datamaxindex}{\gradmeanindex+7}
+\foreach \group in {0,...,\maxgroup}{
 
-    \pgfplotstablegetcolumnnamebyindex{\gradmeanindex}\of{\log}\to{\gradmeanname}
-    \pgfplotstablegetcolumnnamebyindex{\gradtopindex}\of{\log}\to{\gradtopname}
-    \pgfplotstablegetcolumnnamebyindex{\gradbotindex}\of{\log}\to{\gradbotname}
-    \pgfplotstablegetcolumnnamebyindex{\gradmaxindex}\of{\log}\to{\gradmaxname}
-
-    \pgfplotstablegetcolumnnamebyindex{\datameanindex}\of{\log}\to{\datameanname}
-    \pgfplotstablegetcolumnnamebyindex{\datatopindex}\of{\log}\to{\datatopname}
-    \pgfplotstablegetcolumnnamebyindex{\databotindex}\of{\log}\to{\databotname}
-    \pgfplotstablegetcolumnnamebyindex{\datamaxindex}\of{\log}\to{\datamaxname}
-    
     \clearpage
     
+    \pgfmathtruncatemacro{\groupindex}{\offset+\group*\groupelems)}
+    \pgfplotstablegetcolumnnamebyindex{\groupindex}\of{\log}\to{\groupname}
+
     \begin{Center}
-        \textbf{\Large \StrBefore{\gradmeanname}{.grad_mean}}
+        \textbf{\Large \StrBefore{\groupname}{.grad_mean}}
     \end{Center}
     
     \begin{figure}[!h]
     \Centering
-        \begin{tikzpicture}
-        \begin{axis}[xlabel=train_batch, ylabel=grad, no marks, scale=0.8]
-            \addplot table [x=train_batch, y index=\gradmeanindex] {\logpath};
-            \pgfplotsset{cycle list shift=-1}
-            \addplot+[name path=top, opacity=0, forget plot] table [x=train_batch, y index=\gradtopindex] {\logpath};
-            \addplot+[name path=bot, opacity=0, forget plot] table [x=train_batch, y index=\gradbotindex] {\logpath};
-            \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
-            \pgfplotsset{cycle list shift=0}
-        \end{axis}
-        \end{tikzpicture}
-        %
-        \begin{tikzpicture}
-        \begin{axis}[xlabel=train_batch, ylabel=grad_max, no marks, scale=0.8]
-            \addplot table [x=train_batch, y index=\gradmeanindex] {\logpath};
-        \end{axis}
-        \end{tikzpicture}
-    \end{figure}
+    \begin{tikzpicture}
+    \begin{groupplot}[group style={rows=2, columns=2, horizontal sep=2.2cm, vertical sep=1.8cm},
+                      scale=0.8,
+                      no marks]
 
-    \begin{figure}[!h]
-    \Centering
-        \begin{tikzpicture}
-        \begin{axis}[xlabel=train_batch, ylabel=data, no marks, scale=0.8]
-            \addplot table [x=train_batch, y index=\datameanindex] {\logpath};
-            \pgfplotsset{cycle list shift=-1}
-            \addplot+[name path=top, opacity=0, forget plot] table [x=train_batch, y index=\datatopindex] {\logpath};
-            \addplot+[name path=bot, opacity=0, forget plot] table [x=train_batch, y index=\databotindex] {\logpath};
-            \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
-            \pgfplotsset{cycle list shift=0}
-        \end{axis}
-        \end{tikzpicture}
-        %
-        \begin{tikzpicture}
-        \begin{axis}[xlabel=train_batch, ylabel=data_max, no marks, scale=0.8]
-            \addplot table [x=train_batch, y index=\datamaxindex] {\logpath};
-        \end{axis}
-        \end{tikzpicture}  
+        \pgfmathtruncatemacro{\groupelemzeroindex}{\groupindex}
+        \pgfmathtruncatemacro{\groupelemoneindex}{\groupindex+1}
+        \pgfmathtruncatemacro{\groupelemtwoindex}{\groupindex+2}
+        \pgfmathtruncatemacro{\groupelemthreeindex}{\groupindex+3}
+        \pgfmathtruncatemacro{\groupelemfourindex}{\groupindex+4}
+        \pgfmathtruncatemacro{\groupelemfiveindex}{\groupindex+5}
+        \pgfmathtruncatemacro{\groupelemsixindex}{\groupindex+6}
+        \pgfmathtruncatemacro{\groupelemsevenindex}{\groupindex+7}
+
+        \nextgroupplot[xlabel=train_batch, ylabel=grad]
+        \addplot table [x=train_batch, y index=\groupelemzeroindex] {\logpath};
+        \pgfplotsset{cycle list shift=-1}
+        \addplot+[name path=top, opacity=0, forget plot] table [x=train_batch, y index=\groupelemoneindex] {\logpath};
+        \addplot+[name path=bot, opacity=0, forget plot] table [x=train_batch, y index=\groupelemtwoindex] {\logpath};
+        \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
+        \pgfplotsset{cycle list shift=0}
+
+        \nextgroupplot[xlabel=train_batch, ylabel=grad_max]
+        \addplot table [x=train_batch, y index=\groupelemthreeindex] {\logpath};
+
+        \nextgroupplot[xlabel=train_batch, ylabel=data]
+        \addplot table [x=train_batch, y index=\groupelemfourindex] {\logpath};
+        \pgfplotsset{cycle list shift=-1}
+        \addplot+[name path=top, opacity=0, forget plot] table [x=train_batch, y index=\groupelemfiveindex] {\logpath};
+        \addplot+[name path=bot, opacity=0, forget plot] table [x=train_batch, y index=\groupelemsixindex] {\logpath};
+        \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
+        \pgfplotsset{cycle list shift=0}
+
+        \nextgroupplot[xlabel=train_batch, ylabel=data_max]
+        \addplot table [x=train_batch, y index=\groupelemsevenindex] {\logpath};
+
+    \end{groupplot}
+    \end{tikzpicture}
     \end{figure}
 }
 

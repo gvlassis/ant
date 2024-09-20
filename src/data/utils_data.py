@@ -3,6 +3,7 @@ import datasets
 datasets.logging.set_verbosity_error()
 import torch
 import torchvision.transforms.v2
+import sys
 
 script_path = os.path.abspath(__file__)
 data_path = os.path.dirname(script_path)
@@ -71,8 +72,8 @@ class TabularDataset(torch.utils.data.Dataset):
         X_path = "%s/%s_X.pt" % (dataset_path, split)
         Y_path = "%s/%s_Y.pt" % (dataset_path, split)
 
-        self.X = torch.load(X_path, map_location=device)
-        self.Y = torch.load(Y_path, map_location=device)
+        self.X = torch.load(X_path, map_location=device, weights_only=True)
+        self.Y = torch.load(Y_path, map_location=device, weights_only=True)
 
     def __getitem__(self, i):
         return self.X[i], self.Y[i]
@@ -102,8 +103,8 @@ class ImageDataset(torch.utils.data.Dataset):
         X_path = "%s/%s_X.pt" % (dataset_path, split)
         Y_path = "%s/%s_Y.pt" % (dataset_path, split)
 
-        self.X = torch.load(X_path, map_location=device)
-        self.Y = torch.load(Y_path, map_location=device)
+        self.X = torch.load(X_path, map_location=device, weights_only=True)
+        self.Y = torch.load(Y_path, map_location=device, weights_only=True)
 
     def __getitem__(self, i):
         return self.X[i], self.Y[i]
@@ -133,7 +134,7 @@ class TextDataset(torch.utils.data.Dataset):
 
         X_path = "%s/%s_X.pt" % (dataset_path, split)
 
-        self.X = torch.load(X_path, map_location=device)
+        self.X = torch.load(X_path, map_location=device, weights_only=True)
 
     # i is the first index of the context
     def __getitem__(self, i):
@@ -172,7 +173,7 @@ def dataset_to_tensors(dataset, tokenizer=None, eot_id=None):
 
     return tensors
 
-def get_train_dataloader(dataset, device, batch_size, context=1024):
+def get_train_iterator(dataset, device, batch_size, context=1024):
     dataset_path = "%s/%s" % (root_path, dataset)
 
     if dataset in DATASETS_TABULAR:
@@ -182,13 +183,14 @@ def get_train_dataloader(dataset, device, batch_size, context=1024):
     elif dataset in DATASETS_TEXT:
         train_dataset = TextDataset(dataset_path, split="train", device=device, context=context)
     
-    # shuffle=True hangs
-    train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True)
+    # shuffle=True hangs, num_samples: Maximum samples (default: len(dataset)
+    train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=sys.maxsize)
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
+    train_iterator = iter(train_dataloader)
 
-    return train_dataloader
+    return train_iterator
 
-def get_val_dataloader(dataset, device, batch_size, context=1024):
+def get_val_iterator(dataset, device, batch_size, context=1024):
     dataset_path = "%s/%s" % (root_path, dataset)
 
     if dataset in DATASETS_TABULAR:
@@ -198,11 +200,12 @@ def get_val_dataloader(dataset, device, batch_size, context=1024):
     elif dataset in DATASETS_TEXT:
         val_dataset = TextDataset(dataset_path, split="val", device=device, context=context)
     
-    # shuffle=True hangs
-    val_sampler = torch.utils.data.RandomSampler(val_dataset, replacement=True)
+    # shuffle=True hangs, num_samples: Maximum samples (default: len(dataset))
+    val_sampler = torch.utils.data.RandomSampler(val_dataset, replacement=True, num_samples=sys.maxsize)
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True)
+    val_iterator = iter(val_dataloader)
 
-    return val_dataloader
+    return val_iterator
 
 def transform(dataset, x):
     if dataset in DATASETS_TABULAR:
@@ -214,7 +217,9 @@ def transform(dataset, x):
         
     return x
 
-def get_loss(dataset, batch_Y_, batch_Y):
+def get_loss(dataset, model, batch_X, batch_Y, label_smoothing=0):
+    batch_Y_ = model(transform(dataset, batch_X))
+
     if dataset in DATASETS_TABULAR:
         loss = torch.nn.functional.mse_loss(
             batch_Y_[...,0],
@@ -224,13 +229,29 @@ def get_loss(dataset, batch_Y_, batch_Y):
     elif dataset in DATASETS_IMAGE:
         loss = torch.nn.functional.cross_entropy(
             batch_Y_,
-            batch_Y.to(torch.int64)
+            batch_Y.to(torch.int64),
+            label_smoothing = label_smoothing
         )
 
     elif dataset in DATASETS_TEXT:
         loss = torch.nn.functional.cross_entropy(
             torch.reshape(batch_Y_, (-1,batch_Y_.shape[-1])),
-            torch.flatten(batch_Y.to(torch.int64) - torch.iinfo(torch.int16).min)
+            torch.flatten(batch_Y.to(torch.int64) - torch.iinfo(torch.int16).min),
+            label_smoothing = label_smoothing
         )
         
+    return batch_Y_, loss
+
+@torch.no_grad()
+def approximate_loss(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    loss = 0
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        loss += get_loss(dataset, model, batch_X.to(device), batch_Y.to(device), 0)[1].item()
+    loss = loss/batches
+
     return loss

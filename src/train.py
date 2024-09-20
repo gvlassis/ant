@@ -4,164 +4,185 @@ import argparse
 import data.utils_data
 import models.utils_models
 import utils
-import torchinfo
+import fvcore.nn
 import torchview
+import logging
+torch._logging.set_logs(all=logging.ERROR)
+import contextlib
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
-parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
-parser.add_argument("--vocab_size", type=int, default=50257)
-parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
-parser.add_argument("--parametrization", choices=models.utils_models.PARAMETRIZATIONS, default="mup")
-parser.add_argument("--ζ", help="Width scaling factor", type=int, default=8)
-parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=1/10)
-parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
-parser.add_argument("--weight_decay", type=float, default=0)
-parser.add_argument("--batch_size", type=int, default=16)
-parser.add_argument("--context", type=int, default=128)
-parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=50000)
-parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
-parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=200)
-parser.add_argument("--device_index", help="CUDA device that stores the dataset and the models", type=int, default=0)
-parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="float32")
-parser.add_argument("--compile", help="Use torch.compile()", type=utils.str_to_bool, default=False)
-parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
+parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH", type=utils.str_to_bool, default=False)
 parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=False)
 parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
-parser.add_argument("--verbose_init", help="Print initialization information", type=utils.str_to_bool, default=False)
+parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
+parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=False)
+
+parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
+parser.add_argument("--vocab_size", type=int, default=50304)
+parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="transformer")
+parser.add_argument("--parametrization", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
+parser.add_argument("--ζ", help="Width scaling factor", type=int, default=12)
+
+parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.4)
+parser.add_argument("--k", help="Learning rate", type=float, default=1e-3)
+parser.add_argument("--β1", type=float, default=0.9)
+parser.add_argument("--β2", type=float, default=0.95)
+parser.add_argument("--weight_decay", type=float, default=0)
+parser.add_argument("--label_smoothing", type=float, default=0)
+
+parser.add_argument("--batch_size", help="Total batch size, over all GPUs and accumulations, for one gradient update", type=int, default=512)
+parser.add_argument("--micro_batch_size", help="Batch size that fits in every GPU", type=int, default=32)
+parser.add_argument("--context", type=int, default=512)
+parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=25_000)
+parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
+parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=200)
+
+parser.add_argument("--model_device_index", help="CUDA device that stores the model", type=int, default=0)
+parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Device type that preloads the dataset", default="cpu")
+parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="bfloat16")
+parser.add_argument("--compile", help="Use torch.compile()", type=utils.str_to_bool, default=True)
 args=parser.parse_args()
 
-device_type="cuda"
-device="%s:%d" % (device_type, args.device_index)
+torchelastic = os.getenv("TORCHELASTIC_RUN_ID") != None
+if torchelastic:
+    # If the backend is not provided, then both a gloo and nccl backend will be created
+    torch.distributed.init_process_group(backend="nccl")
+    
+    # Get environment variables set by torchrun
+    WORLD_SIZE = int(os.getenv("WORLD_SIZE"))
+    RANK = int(os.getenv("RANK"))
+    LOCAL_RANK = int(os.getenv("LOCAL_RANK"))
+    
+    master = RANK == 0
+    
+    model_device_index = LOCAL_RANK
+
+    accumulation = args.batch_size//(WORLD_SIZE*args.micro_batch_size)
+else:
+    master = True
+
+    model_device_index = args.model_device_index
+    
+    accumulation = args.batch_size//args.micro_batch_size
 
 subpath_dir = os.path.dirname(args.SUBPATH)
-os.makedirs(subpath_dir, exist_ok=True)
+if master: os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
 graph_path = args.SUBPATH+".pdf"
 
-print("💾 Loading dataset")
-train_dataloader = data.utils_data.get_train_dataloader(args.dataset, device, args.batch_size, args.context)
-val_dataloader = data.utils_data.get_val_dataloader(args.dataset, device, args.batch_size, args.context)
+model_device_type = "cuda"
+model_device = f"{model_device_type}:{model_device_index}"
+if args.dataset_device_type == "cpu":
+    dataset_device = "cpu"
+elif args.dataset_device_type == "cuda":
+    dataset_device = model_device
 
-print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.weight_decay, args.context, device, args.verbose_init)
+if master: print("💾 Loading dataset")
+train_iterator = data.utils_data.get_train_iterator(args.dataset, dataset_device, args.micro_batch_size, args.context)
+val_iterator = data.utils_data.get_val_iterator(args.dataset, dataset_device, args.micro_batch_size, args.context)
+
+if master: print("🧠 Initializing model")
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master)
+model = model.to(model_device)
 if args.info:
-    batch_X, _ = next(iter(train_dataloader))
-    input_data = data.utils_data.transform(args.dataset, batch_X)
-    torchinfo.summary(model, input_data=input_data, col_names=("input_size", "output_size", "num_params", "params_percent", "mult_adds"), col_width=18, depth=3)
+    batch_X, _ = next(train_iterator)
+    X = batch_X[0]
+    input_data = data.utils_data.transform(args.dataset, X.to(model_device))
+    if master: print(fvcore.nn.flop_count_table(fvcore.nn.FlopCountAnalysis(model, input_data), max_depth=3, show_param_shapes=False))
 if args.graph:
-    batch_X, _ = next(iter(train_dataloader))
-    input_data = data.utils_data.transform(args.dataset, batch_X)
-    torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
+    batch_X, _ = next(train_iterator)
+    X = batch_X[0]
+    input_data = data.utils_data.transform(args.dataset, X.to(model_device))
+    if master: torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
+# Get the parameters' names before DDP/compile
+train_stats_header = models.utils_models.get_train_stats_header(model)
 
-suffix=""
-for name, _ in model.named_parameters():
-    suffix+=" %s.grad_mean %s.grad_top %s.grad_bot %s.grad_max %s.data_mean %s.data_top %s.data_bot %s.data_max" % (name, name, name, name, name, name, name, name)
+# float16 (not bfloat16) needs scaling
+scaler = torch.amp.GradScaler("cuda", enabled=(args.dtype==torch.float16))
 
-print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %12.12s %12.12s\x1b[0m" % ("train_batch", "train_loss", "val_loss", "forward", "backward", "total"))
-with open(log_path,"w") as file:
-    file.write("train_batch train_loss val_loss%s\n" % suffix)
+if torchelastic: model = torch.nn.parallel.DistributedDataParallel(model)
 
-scaler = torch.cuda.amp.GradScaler()
+# Compile after DDP
 if args.compile:
-    torch._inductor.config.compile_threads=1
-    model = torch.compile(model, mode="max-autotune")
+    if master: print("⏳ Compiling")
+    # mode=max-autotune gives NaN
+    get_loss = torch.compile(data.utils_data.get_loss)
+else:
+    get_loss = data.utils_data.get_loss
 
+scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
+                                                  [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=0.01*args.train_batches),
+                                                  torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=args.train_batches-0.01*args.train_batches-0.2*args.train_batches),
+                                                  torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=0.2*args.train_batches)],
+                                                  milestones=[0.01*args.train_batches, args.train_batches-0.2*args.train_batches])
+if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
+
+if master:
+    print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "k", "train_loss", "val_loss", "train_batch_time"))
+    with open(log_path,"w") as file:
+        file.write(f"train_batch k train_loss val_loss train_time {train_stats_header}\n")
+
+train_time = 0
 min_train_loss = float("+inf")
 min_val_loss = float("+inf")
 for train_batch in range(args.train_batches):
-    total_start = utils.get_sync_time(device)
-
-    try:
-        batch_train_X, batch_train_Y = next(train_iterator)
-    except (NameError, StopIteration):
-        train_iterator = iter(train_dataloader)
-        batch_train_X, batch_train_Y = next(train_iterator)
-
+    train_batch_start = utils.get_sync_time(model_device)
+    
     model.train()
-    with torch.autocast(device_type=device_type, dtype=args.dtype), torch.cuda.device(args.device_index):
-        forward_start = utils.get_sync_time(device)
-        batch_train_Y_ = model(data.utils_data.transform(args.dataset, batch_train_X))
-        
-        train_loss = data.utils_data.get_loss(args.dataset, batch_train_Y_, batch_train_Y)
-        forward_end = utils.get_sync_time(device)
+    # I can only use all_reduce with Tensors
+    train_loss = torch.tensor(0.0).to(model_device)
+    for micro_train_batch in range(accumulation):
+        batch_train_X, batch_train_Y = next(train_iterator)
 
-    optimizer.zero_grad()
-    backward_start = utils.get_sync_time(device)
-    scaler.scale(train_loss).backward()
-    backward_end = utils.get_sync_time(device)
+        # Only sync gradients in the last micro_train_batch
+        with (model.no_sync() if torchelastic and micro_train_batch<accumulation-1 else contextlib.nullcontext()):
+            with torch.autocast(device_type=model_device_type, dtype=args.dtype):
+                micro_train_loss = get_loss(args.dataset, model, batch_train_X.to(model_device), batch_train_Y.to(model_device), args.label_smoothing)[1]/accumulation
+                train_loss += micro_train_loss.detach()
+            scaler.scale(micro_train_loss).backward()
+    
+    train_batch_end = utils.get_sync_time(model_device)
+    train_batch_time = train_batch_end-train_batch_start
+    train_time += train_batch_time
+    
+    if torchelastic: torch.distributed.all_reduce(train_loss, op=torch.distributed.ReduceOp.AVG)
+    train_loss = train_loss.item()
 
-    total_end = utils.get_sync_time(device)
-
-    if train_batch%args.update_freq==0:
+    if train_batch % args.update_freq == 0 and master:
         train_batch_decorated = "%12.12s" % train_batch
+
+        k_decorated = "%12.12s" % ("%f" % scheduler.get_last_lr()[0])
         
-        val_loss_sum = 0
-        for _ in range(args.val_batches):
-            try:
-                batch_val_X, batch_val_Y = next(val_iterator)
-            except (NameError, StopIteration):
-                val_iterator = iter(val_dataloader)
-                batch_val_X, batch_val_Y = next(val_iterator)
+        if train_loss < min_train_loss:
+            min_train_loss = train_loss
+            train_loss_decorated = "\x1b[35;1m%12.12s\x1b[0m" % ("%f" % train_loss)
+        else:
+            train_loss_decorated = "%12.12s" % ("%f" % train_loss)
 
-            model.eval()
-            with torch.no_grad(), torch.autocast(device_type=device_type, dtype=args.dtype), torch.cuda.device(args.device_index):
-                batch_val_Y_ = model(data.utils_data.transform(args.dataset, batch_val_X))
-                
-                batch_val_loss = data.utils_data.get_loss(args.dataset, batch_val_Y_, batch_val_Y)
-
-            val_loss_sum += batch_val_loss.item()
-
-        val_loss = val_loss_sum/args.val_batches
-
+        val_loss = data.utils_data.approximate_loss(args.val_batches, val_iterator, args.dataset, model)
         if val_loss < min_val_loss:
             min_val_loss = val_loss
-            if args.save_model: model.save_pretrained(args.SUBPATH)
+            if args.save_model: 
+                if torchelastic:
+                    model.module.save_pretrained(args.SUBPATH)
+                else:
+                    model.save_pretrained(args.SUBPATH)
             val_loss_decorated = "\x1b[36;1m%12.12s\x1b[0m" % ("%f" % val_loss)
         else:
             val_loss_decorated = "%12.12s" % ("%f" % val_loss)
 
-        if train_loss.item() < min_train_loss:
-            min_train_loss = train_loss.item()
-            train_loss_decorated = "\x1b[35;1m%12.12s\x1b[0m" % ("%f" % train_loss.item())
-        else:
-            train_loss_decorated = "%12.12s" % ("%f" % train_loss.item())
-    
-        forward_decorated = "%12.12s" % utils.us_to_human_friendly(forward_end-forward_start)
-        backward_decorated = "%12.12s" % utils.us_to_human_friendly(backward_end-backward_start)
-        total_decorated = "\x1b[33;3m%12.12s\x1b[0m" % utils.us_to_human_friendly(total_end-total_start)
+        train_batch_time_decorated = "\x1b[33;3m%18.18s\x1b[0m" % utils.us_to_human_friendly(train_batch_time)
 
-        suffix=""
-        for name, parameter in model.named_parameters():
-            # Numerically, I only care about the absolute values
-            grad = parameter.grad.abs()
-            grad_mean = grad.mean().item()
-            # https://github.com/pytorch/pytorch/issues/29372
-            if grad.numel()==1:
-                grad_std = 0
-            else:
-                grad_std = grad.std().item()
-            grad_top = grad_mean+grad_std
-            grad_bot = grad_mean-grad_std
-            grad_max = grad.max().item()
-            
-            # Numerically, I only care about the absolute values
-            parameter_data = parameter.data.abs()
-            data_mean = parameter_data.mean().item()
-            # https://github.com/pytorch/pytorch/issues/29372
-            if parameter_data.numel()==1:
-                data_std = 0
-            else:
-                data_std = parameter_data.std().item()
-            data_top = data_mean+data_std
-            data_bot = data_mean-data_std
-            data_max = parameter_data.max().item()
+        train_stats = models.utils_models.get_train_stats(model)
 
-            suffix+=" %f %f %f %f %f %f %f %f" % (grad_mean, grad_top, grad_bot, grad_max, data_mean, data_top, data_bot, data_max)
-        
-        print("%s %s %s %s %s %s" % (train_batch_decorated, train_loss_decorated, val_loss_decorated, forward_decorated, backward_decorated, total_decorated))
+        print("%s %s %s %s %s" % (train_batch_decorated, k_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
         with open(log_path,"a") as file:
-            file.write("%d %f %f%s\n" % (train_batch, train_loss.item(), val_loss, suffix))
+            file.write("%d %f %f %f %d %s\n" % (train_batch, scheduler.get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
 
     scaler.step(optimizer)
+    optimizer.zero_grad()
     scaler.update()
+    scheduler.step()
+
+if torchelastic: torch.distributed.destroy_process_group()

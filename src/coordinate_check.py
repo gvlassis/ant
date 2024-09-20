@@ -5,69 +5,76 @@ import data.utils_data
 import models.utils_models
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat")
-parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
-parser.add_argument("--vocab_size", type=int, default=50257)
-parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
-parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=1/10)
-parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
-parser.add_argument("--weight_decay", type=float, default=0)
-parser.add_argument("--batch_size", type=int, default=16)
-parser.add_argument("--context", type=int, default=128)
-parser.add_argument("--batches", help="The number of batches used", type=int, default=15)
-parser.add_argument("--update_freq", metavar="INT", help="Every how many batches the norm will be printed", type=int, default=3)
-args=parser.parse_args()
+parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
 
-device="cuda:0"
+parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
+parser.add_argument("--vocab_size", type=int, default=50304)
+parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
+
+parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.5)
+parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
+parser.add_argument("--β1", type=float, default=0.9)
+parser.add_argument("--β2", type=float, default=0.999)
+parser.add_argument("--weight_decay", type=float, default=0)
+parser.add_argument("--label_smoothing", type=float, default=0)
+
+parser.add_argument("--batch_size", type=int, default=16)
+parser.add_argument("--context", type=int, default=512)
+parser.add_argument("--batches", help="The number of batches used", type=int, default=15)
+parser.add_argument("--update_freq", help="Every how many batches the norm will be printed", type=int, default=3)
+args=parser.parse_args()
 
 subpath_dir = os.path.dirname(args.SUBPATH)
 os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
 
+model_device = "cuda:0"
+dataset_device = "cpu"
+
 print("💾 Loading dataset")
-dataloader = data.utils_data.get_train_dataloader(args.dataset, device, args.batch_size, args.context)
+iterator = data.utils_data.get_train_iterator(args.dataset, dataset_device, args.batch_size, args.context)
 
-suffix=""
-for parametrization in models.utils_models.PARAMETRIZATIONS:
-    for batch in range(0, args.batches, args.update_freq):
-        suffix+=" %s.%d.out %s.%d.grad_mean %s.%d.data_mean" % (parametrization, batch, parametrization, batch, parametrization, batch)
-
-print("\x1b[1mζ%s\x1b[0m" % suffix)
+print("\x1b[1m%6.6s" % "ζ", end="")
 with open(log_path,"w") as file:
-    file.write("ζ%s\n" % suffix)
-    
+    file.write("ζ")
+
+for parametrization in models.parametrizations.PARAMETRIZATIONS:
+    for batch in range(0, args.batches, args.update_freq):
+        print(" %10.10s %16.16s %16.16s" % (f"{parametrization}.{batch}.out", f"{parametrization}.{batch}.grad_mean", f"{parametrization}.{batch}.data_mean"), end="")
+        with open(log_path,"a") as file:
+            file.write(f" {parametrization}.{batch}.out {parametrization}.{batch}.grad_mean {parametrization}.{batch}.data_mean")
+
+print("\x1b[0m")
+with open(log_path, "a") as file:
+    file.write("\n")
+
 for ζ in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]:
-    print("%d" % ζ, end="")
-    with open(log_path,"a") as file:
+    print("%6.6s" % ζ, end="")
+    with open(log_path, "a") as file:
         file.write("%d" % ζ)
 
-    for parametrization in models.utils_models.PARAMETRIZATIONS:
-        model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, parametrization, ζ, args.c, args.k, args.weight_decay, device)
+    for parametrization in models.parametrizations.PARAMETRIZATIONS:
+        model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, parametrization, ζ, args.c, args.k, (args.β1, args.β2), args.weight_decay, args.context, False)
+        model = model.to(model_device)
         
+        model.train()
         for batch in range(args.batches):
-            try:
-                batch_X, batch_Y = next(iterator)
-            except (NameError, StopIteration):
-                iterator = iter(dataloader)
-                batch_X, batch_Y = next(iterator)
-
-            model.train()
-            
-            batch_Y_ = model(data.utils_data.transform(args.dataset, batch_X))
+            batch_X, batch_Y = next(iterator)
                 
-            loss = data.utils_data.get_loss(args.dataset, batch_Y_, batch_Y)
-
-            optimizer.zero_grad()
+            batch_Y_, loss = data.utils_data.get_loss(args.dataset, model, batch_X.to(model_device), batch_Y.to(model_device), args.label_smoothing)
+            
             loss.backward()
             optimizer.step()
 
-            if batch%args.update_freq==0:
-                out = batch_Y_.abs().mean().item()
-                grad_mean= model.l2.weight.grad.abs().mean().item()
-                data_mean = model.l2.weight.data.abs().mean().item()
-                print(" %f %f %f" % (out,grad_mean,data_mean), end="")
-                with open(log_path,"a") as file:
-                    file.write(" %f %f %f" % (out,grad_mean,data_mean))
+            # Access gradients before they become None
+            if batch % args.update_freq == 0:
+                out, grad_mean, data_mean = models.utils_models.get_batch_stats(args.family, model, batch_Y_)
+                
+                print(" %10.10s %16.16s %16.16s" % ("%f" % out, "%f" % grad_mean, "%f" % data_mean), end="")
+                with open(log_path, "a") as file:
+                    file.write(" %f %f %f" % (out, grad_mean, data_mean))
+
+            optimizer.zero_grad()
 
     print()
     with open(log_path,"a") as file:

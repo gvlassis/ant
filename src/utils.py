@@ -157,12 +157,12 @@ def print_schedule(train_batches, scheduler):
         scheduler.step()
 
     plotext.plot_size(width=plotext.terminal_width()/2, height=plotext.terminal_height()/4)
-    plotext.theme("clear")
+    plotext.theme("pro")
     plotext.xlabel("train_batch")
     plotext.xaxes(lower=True, upper=False)
     plotext.yaxes(left=True, right=False)
     plotext.xticks([0,train_batches*0.25,train_batches*0.5,train_batches*0.75,train_batches])
     
-    plotext.plot(range(train_batches), lrs, marker="braille", label="lr", color="blue+")
+    plotext.plot(range(train_batches), lrs, marker="braille", label="lr")
     plotext.show()
     plotext.clear_figure()
