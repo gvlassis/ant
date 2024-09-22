@@ -1,5 +1,4 @@
 import torch
-import huggingface_hub
 from . import mlp
 from math import sqrt
 import math
@@ -210,7 +209,7 @@ def apply_pos(pos_type, emb, pos):
         
     return X
 
-class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
+class Transformer(torch.nn.Module):
     def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
         super().__init__()
 

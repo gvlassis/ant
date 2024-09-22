@@ -1,5 +1,4 @@
 import torch
-import huggingface_hub
 from . import mlp
 
 class ConvStageA(torch.nn.Module):
@@ -43,7 +42,7 @@ class ConvStageB(torch.nn.Module):
 
         return x
 
-class VGG(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
+class VGG(torch.nn.Module):
     def __init__(self, res=32, num_a=2, num_b=2, out_channels0=4, dropout=0.5, classes=10):
         super().__init__()
         

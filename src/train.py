@@ -12,7 +12,7 @@ import contextlib
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
-parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH", type=utils.str_to_bool, default=False)
+parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
 parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=False)
 parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
@@ -69,6 +69,7 @@ else:
 subpath_dir = os.path.dirname(args.SUBPATH)
 if master: os.makedirs(subpath_dir, exist_ok=True)
 log_path = args.SUBPATH+".dat"
+model_path = args.SUBPATH+".pt"
 graph_path = args.SUBPATH+".pdf"
 
 model_device_type = "cuda"
@@ -163,11 +164,11 @@ for train_batch in range(args.train_batches):
         val_loss = data.utils_data.approximate_loss(args.val_batches, val_iterator, args.dataset, model)
         if val_loss < min_val_loss:
             min_val_loss = val_loss
-            if args.save_model: 
+            if args.save_model:
                 if torchelastic:
-                    model.module.save_pretrained(args.SUBPATH)
+                    torch.save(model.module.state_dict(), model_path)
                 else:
-                    model.save_pretrained(args.SUBPATH)
+                    torch.save(model.state_dict(), model_path)
             val_loss_decorated = "\x1b[36;1m%12.12s\x1b[0m" % ("%f" % val_loss)
         else:
             val_loss_decorated = "%12.12s" % ("%f" % val_loss)

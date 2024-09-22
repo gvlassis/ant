@@ -7,7 +7,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "vgg", "vit", "transformer"]
 
-def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, betas, weight_decay, max_context, test_parametrization=False):
+def get_model_optimizer(vocab_size=50304, family="transformer", parametrization="sp", ζ=1, c=0.5, k=1e-3, betas=(0.9, 0.95), weight_decay=0, max_context=512, test_parametrization=False):
     if parametrization=="mup":
         scale_type = "1/d"
     else:

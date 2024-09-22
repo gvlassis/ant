@@ -1,5 +1,4 @@
 import torch
-import huggingface_hub
 
 # Used only in MLP2L in TransformerBlock
 class GLU(torch.nn.Module):
@@ -20,7 +19,7 @@ class GLU(torch.nn.Module):
 
         return y
 
-class MLP2L(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
+class MLP2L(torch.nn.Module):
     def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear"):
         super().__init__()
 
@@ -54,7 +53,7 @@ class MLP2L(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
 
         return y
 
-class MLP3L(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
+class MLP3L(torch.nn.Module):
     def __init__(self, d0, d1, d2, d3, bias=True, act=torch.nn.ReLU(), dropout=0):
         super().__init__()
 

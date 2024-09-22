@@ -1,8 +1,7 @@
 import torch
-import huggingface_hub
 from . import transformer
 
-class ViT(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
+class ViT(torch.nn.Module):
     def __init__(self, res=32, patch_size=4, num_blocks=6, d=32, heads=8, scale=None, exp_factor=1, dropout=0.1, classes=10):
         super().__init__()
         
