@@ -2,6 +2,29 @@ import torch
 import huggingface_hub
 from . import mlp
 from math import sqrt
+import math
+
+# Pure PyTorch implementation of torch.nn.functional.scaled_dot_product_attention that returns the attention weights after softmax W instead (https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
+def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
+    L, S = query.size(-2), key.size(-2)
+    scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+    attn_bias = torch.zeros(L, S, dtype=query.dtype)
+    if is_causal:
+        assert attn_mask is None
+        temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+        attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+        attn_bias.to(query.dtype)
+
+    if attn_mask is not None:
+        if attn_mask.dtype == torch.bool:
+            attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+        else:
+            attn_bias += attn_mask
+    attn_weight = query @ key.transpose(-2, -1) * scale_factor
+    attn_weight += attn_bias
+    attn_weight = torch.softmax(attn_weight, dim=-1)
+    attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+    return attn_weight
 
 # Exposes scale and is faster (https://github.com/rasbt/LLMs-from-scratch/blob/main/ch03/02_bonus_efficient-multihead-attention/mha-implementations.ipynb) than PyTorch's torch.nn.MultiheadAttention
 class MHSA(torch.nn.Module):
@@ -48,6 +71,23 @@ class MHSA(torch.nn.Module):
 
         return Y
 
+    # (batches*)context*d
+    def W(self, X):
+        # (batches*)context*(3d)
+        QKV = self.QKV(X)
+
+        # (batches*)context*3*heads*d_head
+        QKV = QKV.unflatten(dim=-1, sizes=(3, self.heads, self.d_head))
+        # (batches*)3*heads*context*d_head
+        QKV = QKV.movedim(-4,-2)
+        # (batches*)heads*context*d_head
+        Q, K, V = QKV.unbind(-4)
+
+        # (batches*)heads*context*context
+        W = scaled_dot_product_attention(Q, K, V, is_causal=self.is_causal, scale=self.scale)
+
+        return W
+
 # Pre-Norm
 class TransformerBlock(torch.nn.Module):
     def __init__(self, heads, d_head, is_causal, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
@@ -85,6 +125,12 @@ class TransformerBlock(torch.nn.Module):
         Z__ = Y__ + Z_
 
         return Z__
+
+    def W(self, X):
+        W = self.mhsa.W(self.norm1(X))
+
+        return W
+
 
 class TransformerEncBlock(TransformerBlock):
     def __init__(self, heads, d_head, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
@@ -220,3 +266,30 @@ class Transformer(torch.nn.Module, huggingface_hub.PyTorchModelHubMixin):
         Z = self.linear(Y__)
 
         return Z
+    
+    # Attention weights (after softmax)
+    # (batches*)context
+    def W(self, ids):
+        context = ids.shape[-1]
+        
+        # (batches*)num_blocks*heads*context*context
+        W = torch.empty(*ids.shape[:-1], num_blocks, self.heads, context, context)
+        
+        # (batches*)context*d
+        X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
+        X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
+
+        Y = X_
+        for i, block in enumerate(self.blocks):
+            # (batches*)heads*context*context
+            W[...,i,:,:,:] = block.W(Y)
+
+            Y_ = block(Y)
+            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+
+        return W 
+
+    # # Embeddings (before positional bias)
+    # # (batches*)context
+    # def Y_(self, ids):
+    #     return

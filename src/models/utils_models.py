@@ -30,10 +30,10 @@ def get_model_optimizer(vocab_size, family, parametrization, ζ, c, k, betas, we
         model_ = vit.ViT(d=32*2, scale=None)
 
     elif family=="transformer":
-        model0 = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=1, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
+        model0 = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=4, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
         model = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=ζ, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
         model_ = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=2, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
-        
+
     optimizer = parametrizations.parametrize(model0, model, model_, parametrization, "adam", c, k, betas=(0.9, 0.95), weight_decay=weight_decay, test=test_parametrization, warning=True)
 
     return model, optimizer

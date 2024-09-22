@@ -173,39 +173,22 @@ def dataset_to_tensors(dataset, tokenizer=None, eot_id=None):
 
     return tensors
 
-def get_train_iterator(dataset, device, batch_size, context=1024):
+def get_iterator(dataset, split, device, batch_size, context):
     dataset_path = "%s/%s" % (root_path, dataset)
 
     if dataset in DATASETS_TABULAR:
-        train_dataset = TabularDataset(dataset_path, split="train", device=device)
+        dataset = TabularDataset(dataset_path, split=split, device=device)
     elif dataset in DATASETS_IMAGE:
-        train_dataset = ImageDataset(dataset_path, split="train", device=device)
+        dataset = ImageDataset(dataset_path, split=split, device=device)
     elif dataset in DATASETS_TEXT:
-        train_dataset = TextDataset(dataset_path, split="train", device=device, context=context)
-    
-    # shuffle=True hangs, num_samples: Maximum samples (default: len(dataset)
-    train_sampler = torch.utils.data.RandomSampler(train_dataset, replacement=True, num_samples=sys.maxsize)
-    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, sampler=train_sampler, drop_last=True)
-    train_iterator = iter(train_dataloader)
-
-    return train_iterator
-
-def get_val_iterator(dataset, device, batch_size, context=1024):
-    dataset_path = "%s/%s" % (root_path, dataset)
-
-    if dataset in DATASETS_TABULAR:
-        val_dataset = TabularDataset(dataset_path, split="val", device=device)
-    elif dataset in DATASETS_IMAGE:
-        val_dataset = ImageDataset(dataset_path, split="val", device=device)
-    elif dataset in DATASETS_TEXT:
-        val_dataset = TextDataset(dataset_path, split="val", device=device, context=context)
+        dataset = TextDataset(dataset_path, split=split, device=device, context=context)
     
     # shuffle=True hangs, num_samples: Maximum samples (default: len(dataset))
-    val_sampler = torch.utils.data.RandomSampler(val_dataset, replacement=True, num_samples=sys.maxsize)
-    val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, sampler=val_sampler, drop_last=True)
-    val_iterator = iter(val_dataloader)
+    sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=sys.maxsize)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=sampler, drop_last=True)
+    iterator = iter(dataloader)
 
-    return val_iterator
+    return iterator
 
 def transform(dataset, x):
     if dataset in DATASETS_TABULAR:

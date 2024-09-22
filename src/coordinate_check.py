@@ -32,7 +32,7 @@ model_device = "cuda:0"
 dataset_device = "cpu"
 
 print("💾 Loading dataset")
-iterator = data.utils_data.get_train_iterator(args.dataset, dataset_device, args.batch_size, args.context)
+iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_device, args.batch_size, args.context)
 
 print("\x1b[1m%6.6s" % "ζ", end="")
 with open(log_path,"w") as file:

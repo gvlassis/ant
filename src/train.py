@@ -79,8 +79,8 @@ elif args.dataset_device_type == "cuda":
     dataset_device = model_device
 
 if master: print("💾 Loading dataset")
-train_iterator = data.utils_data.get_train_iterator(args.dataset, dataset_device, args.micro_batch_size, args.context)
-val_iterator = data.utils_data.get_val_iterator(args.dataset, dataset_device, args.micro_batch_size, args.context)
+train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_device, args.micro_batch_size, args.context)
+val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master: print("🧠 Initializing model")
 model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master)
@@ -149,7 +149,7 @@ for train_batch in range(args.train_batches):
     if torchelastic: torch.distributed.all_reduce(train_loss, op=torch.distributed.ReduceOp.AVG)
     train_loss = train_loss.item()
 
-    if train_batch % args.update_freq == 0 and master:
+    if (train_batch % args.update_freq == 0 or train_batch == args.train_batches-1) and master:
         train_batch_decorated = "%12.12s" % train_batch
 
         k_decorated = "%12.12s" % ("%f" % scheduler.get_last_lr()[0])

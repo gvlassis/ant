@@ -7,7 +7,7 @@
     \pgfplotsset{compat=newest}
     \usepgfplotslibrary{groupplots}
 \usepackage{shellesc}
-    \immediate\write18{ls "../out/\dataset/\family/\parametrization" | grep "ζ=*" | cut -d = -f 2 | sort -n | tr "\string\n" "," | sed "s/,$//" > ζs.txt}
+    \makeatletter\immediate\write18{find "../out/\dataset/\family/\parametrization" -type d -path "*/\hyper=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
 \usepackage{catchfile}
     \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
     \immediate\write18{rm ζs.txt}
@@ -27,16 +27,16 @@
 
 \begin{tikzpicture}
 
-    \begin{groupplot}[group style={rows=1, columns=2, horizontal sep=1.3cm},
+    \begin{groupplot}[group style={rows=1, columns=2, horizontal sep=1.2cm},
                       scale=0.6,
                       legend to name=leg:\parametrization,
                       legend columns=-1,
-                      xlabel=k,
+                      xlabel=$\hyper$,
                       xmode=log]
-        \plotparametrization{\dataset}{\family}{\parametrization}
+        \plotparametrization{\dataset}{\family}{\parametrization}{\hyper}
     \end{groupplot}
 
-    \path (group c1r1.north east) -- node[above]{\pgfplotslegendfromname{leg:\parametrization}} (group c2r1.north west);
+    \path (group c1r1.above north east) -- node[above]{\pgfplotslegendfromname{leg:\parametrization}} (group c2r1.above north west);
 
 \end{tikzpicture}
 

@@ -19,7 +19,8 @@ parser.add_argument("--K", help="Top-K sampling", type=int, default=50)
 parser.add_argument("--P", help="Top-P sampling", type=int, default=0.95)
 args=parser.parse_args()
 
-device="cuda"
+device="cuda:0"
+dataset_device = "cpu"
 
 print("🧠 Initializing model")
 ζ = 24

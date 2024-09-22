@@ -10,37 +10,37 @@
 \RequirePackage{xstring}
 \RequirePackage{underscore}
 
-\newcommand{\plotspl}[4]{
-    % #1: dataset, #2: family, #3: parametrization, #4: split
+\newcommand{\plotspl}[5]{
+    % #1: dataset, #2: family, #3: parametrization, #4: hyper, #5: split
 
-    \immediate\write18{ls "../out/#1/#2/#3" | grep "ζ=*" | cut -d = -f 2 | sort -n | tr "\string\n" "," | sed "s/,$//" > ζs.txt}
+    \makeatletter\immediate\write18{find "../out/#1/#2/#3" -type d -path "*/#4=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
     \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
     \immediate\write18{rm ζs.txt}
     
     \foreach \ζ in \zetas{
-        \addplot table [x=k, y=min_#4_loss_mean] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
-        \edef\tmp{\noexpand\addlegendentry{$\zeta$=\ζ}}\tmp
+        \addplot table [x=#4, y=min_#5_loss_mean] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \edef\tmp{\noexpand\addlegendentry{$\zeta=\ζ$}}\tmp
         \pgfplotsset{cycle list shift=-1}
-        \addplot+[name path=top, opacity=0, forget plot] table [x=k, y=min_#4_loss_top] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
-        \addplot+[name path=bot, opacity=0, forget plot] table [x=k, y=min_#4_loss_bot] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot+[name path=top, opacity=0, forget plot] table [x=#4, y=min_#5_loss_top] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot+[name path=bot, opacity=0, forget plot] table [x=#4, y=min_#5_loss_bot] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
         \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
         \pgfplotsset{cycle list shift=0}
     }
 }
 
-\newcommand{\plotparametrization}[3]{
-    % #1: dataset, #2: family, #3: parametrization
+\newcommand{\plotparametrization}[4]{
+    % #1: dataset, #2: family, #3: parametrization, #4: hyper
 
-    \nextgroupplot[ylabel=min\_train\_loss]
-    \plotspl{#1}{#2}{#3}{train}
-    \nextgroupplot[ylabel=min\_val\_loss]
-    \plotspl{#1}{#2}{#3}{val}
+    \nextgroupplot[ylabel=min\_train\_loss, title=#3]
+    \plotspl{#1}{#2}{#3}{#4}{train}
+    \nextgroupplot[ylabel=min\_val\_loss, title=#3]
+    \plotspl{#1}{#2}{#3}{#4}{val}
 }
 
-\newcommand{\plotfamily}[2]{
-    % #1: dataset, #2: family
+\newcommand{\plotfamily}[3]{
+    % #1: dataset, #2: family, #3: hyper
     
-    \immediate\write18{ls "../out/#1/#2/sp" | grep "ζ=*" | cut -d = -f 2 | sort -n | tr "\string\n" "," | sed "s/,$//" > ζs.txt}
+    \makeatletter\immediate\write18{find "../out/#1/#2/sp" -type d -path "*/#3=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
     \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
     \immediate\write18{rm ζs.txt}
 
@@ -54,17 +54,19 @@
 
     \begin{tikzpicture}
 
-        \begin{groupplot}[group style={rows=2, columns=2, horizontal sep=1.3cm},
+        \begin{groupplot}[group style={rows=4, columns=2, horizontal sep=1.2cm, vertical sep=1.8cm},
                           scale=0.6,
                           legend to name=leg:#2,
                           legend columns=-1,
-                          xlabel=k,
+                          xlabel=$#3$,
                           xmode=log]
-            \plotparametrization{#1}{#2}{sp}
-            \plotparametrization{#1}{#2}{mup}
+            \plotparametrization{#1}{#2}{sp}{#3}
+            \plotparametrization{#1}{#2}{ntk}{#3}
+            \plotparametrization{#1}{#2}{mup}{#3}
+            \plotparametrization{#1}{#2}{mf}{#3}
         \end{groupplot}
 
-        \path (group c1r1.north east) -- node[above]{\pgfplotslegendfromname{leg:#2}} (group c2r1.north west);
+        \path (group c1r1.above north east) -- node[above]{\pgfplotslegendfromname{leg:#2}} (group c2r1.above north west);
 
     \end{tikzpicture}
 }

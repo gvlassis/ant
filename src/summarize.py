@@ -7,7 +7,7 @@ import numpy
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("DIR", help="Training logs are expected in DIR/**/hyper=·/seed.dat", type=os.path.abspath)
-parser.add_argument("--hyper", help="The name of the hyperparameter", default="k")
+parser.add_argument("--hyper", help="The hyperparameter swept", default="k")
 args=parser.parse_args()
 
 files = utils.get_files(args.DIR)
@@ -21,8 +21,8 @@ min_val_loss_mean_archs = float("+inf")
 for arch in archs:
     summary = arch+"/summary.dat"
     
-    hypers = sorted([float(child.split("=")[-1]) for child in utils.get_subdir(arch)])
-    seeds = [ utils.get_subdat("%s/%s=%f" % (arch,args.hyper,hyper)) for hyper in hypers ]
+    hypers = sorted( [float(child.split("=")[-1]) for child in utils.get_subdir(arch) if child[0]==args.hyper] )
+    seeds = [ utils.get_subdat("%s/%s=%f" % (arch, args.hyper, hyper)) for hyper in hypers ]
 
     print(f"{arch} (hypers: \x1b[33;3m{len(hypers)}\x1b[0m, seeds: \x1b[33;3m{utils.numel(seeds)}\x1b[0m)")
 
@@ -52,7 +52,7 @@ for arch in archs:
                 seed_diverged = False
                 for line in file:
                     cols = line.rstrip().split(' ')
-                    train_batch, train_loss, val_loss = int(cols[0]), float(cols[1]), float(cols[2])
+                    train_batch, train_loss, val_loss = int(cols[0]), float(cols[2]), float(cols[3])
                     
                     if min_train_loss>train_loss:
                         min_train_loss = train_loss
