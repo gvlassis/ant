@@ -201,7 +201,10 @@ def transform(dataset, x):
     return x
 
 def get_loss(dataset, model, batch_X, batch_Y, label_smoothing=0):
-    batch_Y_ = model(transform(dataset, batch_X))
+    # batch_Y_ = model(transform(dataset, batch_X))
+
+    # huggingface
+    batch_Y_ = model(transform(dataset, batch_X)).logits
 
     if dataset in DATASETS_TABULAR:
         loss = torch.nn.functional.mse_loss(
