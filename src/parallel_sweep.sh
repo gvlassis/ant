@@ -3,7 +3,7 @@ src_path="$(dirname "${script_path}")"
 root_path="$(dirname "${src_path}")"
 out_path="${root_path}/out"
 
-zeta=6
+zeta=16
 for device_index in {0..3}
 do 
     for sweep in {0}

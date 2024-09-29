@@ -3,6 +3,7 @@ import os
 import models.utils_models
 import torch
 import data.utils_data
+import transformers
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("PATH", help="Path of the model to be used", type=os.path.abspath)
@@ -22,11 +23,10 @@ model_device = "cuda:0"
 dataset_device = "cpu"
 
 print("🧠 Initializing model")
-# model, _ = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, ζ=args.ζ, max_context=args.context)
-# model.load_state_dict(torch.load(args.PATH))
+model, _ = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, ζ=args.ζ, max_context=args.context)
+model.load_state_dict(torch.load(args.PATH))
 
-import transformers
-model = transformers.GPT2LMHeadModel.from_pretrained("gpt2")
+# model = transformers.GPT2LMHeadModel.from_pretrained("gpt2")
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-medium")
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-large")
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-xl")

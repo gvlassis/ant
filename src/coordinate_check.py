@@ -11,7 +11,7 @@ parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="cali
 parser.add_argument("--vocab_size", type=int, default=50304)
 parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
 
-parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.5)
+parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.1)
 parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
 parser.add_argument("--β1", type=float, default=0.9)
 parser.add_argument("--β2", type=float, default=0.999)

@@ -20,23 +20,24 @@ parser.add_argument("--print_schedule", help="Print learning rate schedule", typ
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
 parser.add_argument("--vocab_size", type=int, default=50304)
-parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="transformer")
-parser.add_argument("--parametrization", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
-parser.add_argument("--ζ", help="Width scaling factor", type=int, default=12)
+parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
+parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
+parser.add_argument("--ζ", help="Width scaling factor", type=int, default=1)
 
-parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.4)
-parser.add_argument("--k", help="Learning rate", type=float, default=1e-3)
+parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.5)
+parser.add_argument("--k", help="Learning rate coefficient", type=float, default=1e-3)
+parser.add_argument("--scheduler", help="Learning rate schedule", choices=utils.SCHEDULERS, default="trapezoidal")
 parser.add_argument("--β1", type=float, default=0.9)
 parser.add_argument("--β2", type=float, default=0.95)
 parser.add_argument("--weight_decay", type=float, default=0)
 parser.add_argument("--label_smoothing", type=float, default=0)
 
-parser.add_argument("--batch_size", help="Total batch size, over all GPUs and accumulations, for one gradient update", type=int, default=512)
+parser.add_argument("--batch_size", help="Total batch size, over all GPUs and accumulations, for one gradient update", type=int, default=1024)
 parser.add_argument("--micro_batch_size", help="Batch size that fits in every GPU", type=int, default=32)
-parser.add_argument("--context", type=int, default=512)
-parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=25_000)
-parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
-parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=200)
+parser.add_argument("--context", type=int, default=1024)
+parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=100_000)
+parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=100)
+parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=1000)
 
 parser.add_argument("--model_device_index", help="CUDA device that stores the model", type=int, default=0)
 parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Device type that preloads the dataset", default="cpu")
@@ -112,11 +113,7 @@ if args.compile:
 else:
     get_loss = data.utils_data.get_loss
 
-scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
-                                                  [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=0.01*args.train_batches),
-                                                  torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=args.train_batches-0.01*args.train_batches-0.2*args.train_batches),
-                                                  torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=0.2*args.train_batches)],
-                                                  milestones=[0.01*args.train_batches, args.train_batches-0.2*args.train_batches])
+scheduler = utils.get_scheduler(args.scheduler, optimizer, args.train_batches)
 if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
 
 if master:

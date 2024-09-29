@@ -24,17 +24,40 @@ def get_model_optimizer(vocab_size=50304, family="transformer", parametrization=
         model_ = vgg.VGG(out_channels0=4*2)
 
     elif family=="vit":
-        # scale = mup
-        model0 = vit.ViT(d=32, scale=None)
-        model = vit.ViT(d=32*ζ, scale=None)
-        model_ = vit.ViT(d=32*2, scale=None)
+        channels = 3
+        max_res = 32
+        patch_size = 4
+        num_blocks = 6
+        heads = 8
+        exp_factor = 1
+        dropout = 0.1
+        pos_type = "sin"
+        all_pos = False
+        norm_type = "layer"
+        bias = False
+        act = torch.nn.GELU()
+        l1_type = "linear"
+        classes = 10
+        model0 = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
+        model = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
+        model_ = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 8, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
 
     elif family=="transformer":
-        model0 = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=4, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
-        model = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=ζ, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
-        model_ = transformer.Transformer(vocab_size=vocab_size, num_blocks=12, heads=2, d_head=64, scale_type=scale_type, exp_factor=4, dropout=0, pos_type="learned", max_context=max_context, all_pos=False, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear")
+        num_blocks = 12
+        heads = 8
+        exp_factor = 4
+        dropout = 0
+        pos_type = "learned"
+        all_pos = False
+        norm_type = "layer"
+        bias = False
+        act = torch.nn.GELU()
+        l1_type = "linear"
+        model0 = transformer.Transformer(vocab_size, num_blocks, 1, 64, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
+        model = transformer.Transformer(vocab_size, num_blocks, ζ, 64, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
+        model_ = transformer.Transformer(vocab_size, num_blocks, 2, 64, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
 
-    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, "adam", c, k, betas=(0.9, 0.95), weight_decay=weight_decay, test=test_parametrization, warning=True)
+    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, "adam", c, k, betas=betas, weight_decay=weight_decay, test=test_parametrization, warning=True)
 
     return model, optimizer
 

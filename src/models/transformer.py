@@ -130,7 +130,6 @@ class TransformerBlock(torch.nn.Module):
 
         return W
 
-
 class TransformerEncBlock(TransformerBlock):
     def __init__(self, heads, d_head, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
         super().__init__(heads, d_head, False, scale_type, exp_factor, dropout, norm_type, bias, act, l1_type)
@@ -218,8 +217,8 @@ class Transformer(torch.nn.Module):
         self.heads = heads
         self.d_head = d_head
         self.d = heads * d_head
-        self.exp_factor = exp_factor
         self.scale_type = scale_type
+        self.exp_factor = exp_factor
         self.dropout = dropout
         self.pos_type = pos_type
         self.max_context = max_context

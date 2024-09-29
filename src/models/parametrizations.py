@@ -247,7 +247,7 @@ def parametrize(model0, model, model_, parametrization="sp", optimizer="adam", c
     
     params = []
     
-    if test: print("\x1b[1m%36.36s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % ("parameter_name", "fanin", "fanout", "mean", "B0", "B1", "B2", "std", "C0", "C1", "C2", "lr"))
+    if test: print("\x1b[1m%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % ("parameter_name", "layer", "parameter_type", "fanin0", "fanin", "fanout0", "fanout", "mean", "B0", "B1", "B2", "std", "C0", "C1", "C2", "lr"))
     for parameter_name, parameter in model.named_parameters():
         parameter0 = model0.get_parameter(parameter_name)
 
@@ -279,7 +279,7 @@ def parametrize(model0, model, model_, parametrization="sp", optimizer="adam", c
         params.append({"params": parameter, "lr": lr})
 
         if test:
-            print("%36.36s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, fanin, fanout, mean, "%f" % B0, "%f" % B1, "%f" % B2, "%f" % std, "%f" % C0, "%f" % C1, "%f" % C2, "%f" % lr))
+            print("%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, layer, parameter_type, fanin0, fanin, fanout0, fanout, mean, "%f" % B0, "%f" % B1, "%f" % B2, "%f" % std, "%f" % C0, "%f" % C1, "%f" % C2, "%f" % lr))
 
     if optimizer=="sgd":
         # fused=True is negligibly faster

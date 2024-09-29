@@ -8,6 +8,8 @@ import plotext
 import warnings
 warnings.filterwarnings("ignore", module="torch.optim.lr_scheduler")
 
+SCHEDULERS = ["trapezoidal", "1cycle", "cos", "constant"]
+
 def get_files(root):
     root = os.path.abspath(root)
 
@@ -146,6 +148,28 @@ def generate_text(starting_string, tokenizer, unk_id, eot_id, model, context=128
     string = unicodedata.normalize("NFKC", string)
     
     print(string)
+
+def get_scheduler(scheduler, optimizer, batches):
+    if scheduler == "trapezoidal":
+        scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
+                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=0.01*batches),
+                                                          torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=batches-0.01*batches-0.2*batches),
+                                                          torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=0.2*batches)],
+                                                          milestones=[0.01*batches, batches-0.2*batches])
+    elif scheduler == "1cycle":
+        scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
+                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=batches/2),
+                                                          torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=batches/2)],
+                                                          milestones=[batches/2])
+    elif scheduler == "cos":
+        scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
+                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=0.01*batches),
+                                                          torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=batches-0.01*batches, eta_min=0)],
+                                                          milestones=[0.01*batches])
+    elif scheduler == "constant":
+        scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=batches)
+        
+    return scheduler
 
 def print_schedule(train_batches, scheduler):
     scheduler = copy.deepcopy(scheduler)
