@@ -9,10 +9,10 @@ parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat",
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="california_housing")
 parser.add_argument("--vocab_size", type=int, default=50304)
-parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="mlp")
+parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 
 parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.1)
-parser.add_argument("--k", help="Learning rate", type=float, default=5e-4)
+parser.add_argument("--k", help="Learning rate coefficient", type=float, default=5e-4)
 parser.add_argument("--β1", type=float, default=0.9)
 parser.add_argument("--β2", type=float, default=0.999)
 parser.add_argument("--weight_decay", type=float, default=0)

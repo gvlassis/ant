@@ -10,8 +10,8 @@ parser.add_argument("PATH", help="Path of the model to be used", type=os.path.ab
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
 parser.add_argument("--vocab_size", type=int, default=50304)
-parser.add_argument("--family", choices=models.utils_models.FAMILIES, default="transformer")
-parser.add_argument("--parametrization", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
+parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
+parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=12)
 
 parser.add_argument("--batch_size", type=int, default=32)
