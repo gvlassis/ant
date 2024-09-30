@@ -44,7 +44,7 @@ def get_model_optimizer(vocab_size=50304, family="transformer", parametrization=
 
     elif family=="transformer":
         num_blocks = 12
-        heads = 8
+        heads = 12
         exp_factor = 4
         dropout = 0
         pos_type = "learned"
@@ -53,9 +53,9 @@ def get_model_optimizer(vocab_size=50304, family="transformer", parametrization=
         bias = False
         act = torch.nn.GELU()
         l1_type = "linear"
-        model0 = transformer.Transformer(vocab_size, num_blocks, 1, 64, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
-        model = transformer.Transformer(vocab_size, num_blocks, ζ, 64, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
-        model_ = transformer.Transformer(vocab_size, num_blocks, 2, 64, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
+        model0 = transformer.Transformer(vocab_size, num_blocks, heads, 4, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
+        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
 
     optimizer = parametrizations.parametrize(model0, model, model_, parametrization, "adam", c, k, betas=betas, weight_decay=weight_decay, test=test_parametrization, warning=True)
 
