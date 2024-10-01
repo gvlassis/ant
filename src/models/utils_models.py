@@ -7,7 +7,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "vgg", "vit", "transformer"]
 
-def get_model_optimizer(vocab_size=50304, family="transformer", parametrization="sp", ζ=1, c=0.5, k=1e-3, betas=(0.9, 0.95), weight_decay=0, max_context=512, test_parametrization=False):
+def get_model_optimizer(vocab_size=50304, family="transformer", parametrization="sp", ζ=1, c=0.5, k=1e-3, optimizer="sgd", momentum=0.9, nesterov=False, betas=(0.9, 0.95), weight_decay=0, max_context=512, test_parametrization=False):
     if parametrization=="mup":
         scale_type = "1/d"
     else:
@@ -57,7 +57,7 @@ def get_model_optimizer(vocab_size=50304, family="transformer", parametrization=
         model = transformer.Transformer(vocab_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
         model_ = transformer.Transformer(vocab_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
 
-    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, "adam", c, k, betas=betas, weight_decay=weight_decay, test=test_parametrization, warning=True)
+    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, c, k, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, True)
 
     return model, optimizer
 

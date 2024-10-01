@@ -8,6 +8,7 @@ def get_formatwarning(message, category, filename, lineno, line=None):
 warnings.formatwarning = get_formatwarning
 
 PARAMETRIZATIONS=["sp", "ntk", "mup", "mf"]
+OPTIMIZERS=["sgd","adam"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -242,7 +243,7 @@ def get_parameter_type(parameter, suffix, parent):
 # model0: proxy
 # model: target
 # model_: A scaled (up or down) version of model0
-def parametrize(model0, model, model_, parametrization="sp", optimizer="adam", c=0.5, k=1e-3, momentum=0, betas=(0.9, 0.95), weight_decay=0, test=False, warning=True):
+def parametrize(model0, model, model_, parametrization="sp", c=0.5, k=1e-3, optimizer="sgd", momentum=0, nesterov=False, betas=(0.9, 0.95), weight_decay=0, test=False, warning=True):
     layers = get_layers(model0, model_, warning)
     
     params = []
@@ -283,7 +284,7 @@ def parametrize(model0, model, model_, parametrization="sp", optimizer="adam", c
 
     if optimizer=="sgd":
         # fused=True is negligibly faster
-        return torch.optim.SGD(params, momentum=momentum, weight_decay=weight_decay, fused=True)
+        return torch.optim.SGD(params, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov, fused=True)
     elif optimizer=="adam":
         # fused=True is negligibly faster
         return torch.optim.AdamW(params, betas=betas, weight_decay=weight_decay, fused=True)

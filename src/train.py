@@ -24,11 +24,14 @@ parser.add_argument("--family", help="Model architecture", choices=models.utils_
 parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=1)
 
-parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.5)
-parser.add_argument("--k", help="Learning rate coefficient", type=float, default=1e-3)
+parser.add_argument("--c", help="Initial standard deviation coefficient", type=float, default=0.3)
+parser.add_argument("--optimizer", choices=models.parametrizations.OPTIMIZERS, default="adam")
+parser.add_argument("--k", help="Learning rate coefficient", type=float, default=2e-3)
 parser.add_argument("--scheduler", help="Learning rate schedule", choices=utils.SCHEDULERS, default="trapezoidal")
-parser.add_argument("--β1", type=float, default=0.9)
-parser.add_argument("--β2", type=float, default=0.95)
+parser.add_argument("--momentum", type=float, default=0.9)
+parser.add_argument("--nesterov", help="Use Nesterov momentum", type=utils.str_to_bool, default=False)
+parser.add_argument("--β1", type=float, default=0.7)
+parser.add_argument("--β2", type=float, default=0.92)
 parser.add_argument("--weight_decay", type=float, default=0)
 parser.add_argument("--label_smoothing", type=float, default=0)
 
@@ -85,7 +88,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master: print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master)
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.c, args.k, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master)
 model = model.to(model_device)
 if args.info:
     batch_X, _ = next(train_iterator)
