@@ -121,57 +121,68 @@ def test_table1(fanin0, fanin, fanout0, fanout):
             print("%16.16s %8.8s %s %s %s %s %s %s" % (parametrization, layer, B1_decorated, B2_decorated, C1_sgd_decorated, C2_sgd_decorated, C1_adam_decorated, C2_adam_decorated))
         print("━"*80)
 
-def lookup_table2(fanin, parameter_type, c, k):
+def lookup_table2(fanin, parameter_type, layer, c_input, c_hidden, c_output, k_input, k_hidden, k_output):
     if fanin == 1:
-        if parameter_type == "Linear/Conv.bias":
+        if parameter_type == "bias":
             μ = 0
             B0 = 0
-            C0 = k
+            C0 = k_input
         elif parameter_type == "LayerNorm.weight":
             μ = 1
             B0 = 0
-            C0 = k
-        elif parameter_type == "LayerNorm.bias":
-            μ = 0
-            B0 = 0
-            C0 = k
+            C0 = k_input
         elif parameter_type == "class":
             μ = 0
-            B0 = 0.02
-            C0 = k
+            B0 = c_input
+            C0 = k_input
 
     elif fanin > 1:
         if parameter_type == "Linear/Conv.weight":
-            μ = 0
-            B0 = c
-            C0 = k
+            if layer == "input":
+                μ = 0
+                B0 = c_input * sqrt(fanin)
+                C0 = k_input
+            elif layer == "hidden":
+                μ = 0
+                B0 = c_hidden
+                C0 = k_hidden
+            elif layer == "output":
+                μ = 0
+                B0 = c_output
+                C0 = k_output
+
         elif parameter_type == "emb/pos":
             μ = 0
-            B0 = 0.02 * sqrt(fanin)
-            C0 = k
+            B0 = c_input * sqrt(fanin)
+            C0 = k_input
 
     return μ, B0, C0
 
-def test_table2(c, k):
-    print("\x1b[1m%12.12s %18.18s %8.8s %8.8s %8.8s\x1b[0m" % ("fanin", "parameter_type", "μ", "B0", "C0"))
+def test_table2(c_input, c_hidden, c_output, k_input, k_hidden, k_output):
+    print("\x1b[1m%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % ("fanin", "parameter_type", "layer", "μ", "B0", "C0"))
 
-    μ, B0, C0 = lookup_table2(1, "Linear/Conv.bias", c, k)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s" % ("fanin=1", "Linear/Conv.bias", "%f" % μ, "%f" % B0, "%f" % C0))
-    μ, B0, C0 = lookup_table2(1, "LayerNorm.weight", c, k)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s" % ("fanin=1", "LayerNorm.weight", "%f" % μ, "%f" % B0, "%f" % C0))
-    μ, B0, C0 = lookup_table2(1, "LayerNorm.bias", c, k)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s" % ("fanin=1", "LayerNorm.bias", "%f" % μ, "%f" % B0, "%f" % C0))
-    μ, B0, C0 = lookup_table2(1, "class", c, k)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s" % ("fanin=1", "class", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(1, "bias", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "bias", "input", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(1, "LayerNorm.weight", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "LayerNorm.weight", "input", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(1, "class", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "class", "input", "%f" % μ, "%f" % B0, "%f" % C0))
     
-    print("━"*60)
+    print("━"*70)
 
-    μ, B0, C0 = lookup_table2(4, "Linear/Conv.weight", c, k)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s" % ("fanin=4", "Linear/Conv.weight", "%f" % μ, "%f" % B0, "%f" % C0))
-    μ, B0, C0 = lookup_table2(4, "emb/pos", c, k)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s" % ("fanin=4", "emb", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(4, "Linear/Conv.weight", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=4", "Linear/Conv.weight", "input", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(4, "Linear/Conv.weight", "hidden", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=4", "Linear/Conv.weight", "hidden", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(4, "Linear/Conv.weight", "output", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=4", "Linear/Conv.weight", "output", "%f" % μ, "%f" % B0, "%f" % C0))
 
-    print("━"*60)
+    print("━"*70)
+
+    μ, B0, C0 = lookup_table2(4, "emb/pos", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=4", "emb/pos", "input", "%f" % μ, "%f" % B0, "%f" % C0))
+
+    print("━"*70)
 
 def get_fan(parameter, suffix, parent):
     if isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and suffix=="weight":
@@ -224,16 +235,14 @@ def get_layers(model, model_, warning=True):
 def get_parameter_type(parameter, suffix, parent):
     if isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and suffix=="weight":
         parameter_type = "Linear/Conv.weight"
-    elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and suffix=="bias":
-        parameter_type = "Linear/Conv.bias"
+    elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d, torch.nn.LayerNorm)) and suffix=="bias":
+        parameter_type = "bias"
     elif isinstance(parent, torch.nn.LayerNorm) and suffix=="weight":
         parameter_type = "LayerNorm.weight"
-    elif isinstance(parent, torch.nn.LayerNorm) and suffix=="bias":
-        parameter_type = "LayerNorm.bias"
     else:
         # class
         if parameter.ndim == 1:
-            parameter_type = "LayerNorm.bias"
+            parameter_type = "class"
         # emb, pos
         elif parameter.ndim == 2:
             parameter_type = "emb/pos"
@@ -243,7 +252,7 @@ def get_parameter_type(parameter, suffix, parent):
 # model0: proxy
 # model: target
 # model_: A scaled (up or down) version of model0
-def parametrize(model0, model, model_, parametrization="sp", c=0.5, k=1e-3, optimizer="sgd", momentum=0, nesterov=False, betas=(0.9, 0.95), weight_decay=0, test=False, warning=True):
+def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test, warning):
     layers = get_layers(model0, model_, warning)
     
     params = []
@@ -269,8 +278,8 @@ def parametrize(model0, model, model_, parametrization="sp", c=0.5, k=1e-3, opti
             C2 = C2_adam
         
         parameter_type = get_parameter_type(parameter, suffix, parent)
-
-        μ, B0, C0 = lookup_table2(fanin, parameter_type, c, k)
+        
+        μ, B0, C0 = lookup_table2(fanin, parameter_type, layer, c_input, c_hidden, c_output, k_input, k_hidden, k_output)
 
         mean = μ
         std = B0*B1*B2
