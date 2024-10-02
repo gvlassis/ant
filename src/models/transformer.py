@@ -3,6 +3,8 @@ from . import mlp
 from math import sqrt
 import math
 
+SCALE_TYPES = ["1/sqrt(d)", "1/d"]
+
 # Pure PyTorch implementation of torch.nn.functional.scaled_dot_product_attention that returns the attention weights after softmax W instead (https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
 def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
     L, S = query.size(-2), key.size(-2)

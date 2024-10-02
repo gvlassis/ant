@@ -1,4 +1,5 @@
 import torch
+import warnings
 from . import mlp
 from . import vgg
 from . import vit
@@ -7,11 +8,8 @@ from . import parametrizations
 
 FAMILIES=["mlp", "vgg", "vit", "transformer"]
 
-def get_model_optimizer(vocab_size, family, parametrization, ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization):
-    if parametrization=="mup":
-        scale_type = "1/d"
-    else:
-        scale_type = "1/sqrt(d)"
+def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning):
+    if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
         model0 = mlp.MLP3L(8, 16, 16, 1)
@@ -57,7 +55,7 @@ def get_model_optimizer(vocab_size, family, parametrization, ζ, c_input, c_hidd
         model = transformer.Transformer(vocab_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
         model_ = transformer.Transformer(vocab_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
 
-    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, True)
+    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, warning)
 
     return model, optimizer
 
