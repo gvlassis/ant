@@ -7,11 +7,11 @@ import numpy
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("DIR", help="Training logs are expected in DIR/**/hyper=·/seed.dat", type=os.path.abspath)
-parser.add_argument("--hyper", help="The hyperparameter swept", default="k")
+parser.add_argument("HYPER", help="The hyperparameter swept")
 args=parser.parse_args()
 
 files = utils.get_files(args.DIR)
-archs = natsort.natsorted(utils.match_list(files, f"^(.*)/{args.hyper}=.*/.*\.dat", 1))
+archs = natsort.natsorted(utils.match_list(files, f"^(.*)/{args.HYPER}=.*/.*\.dat", 1))
 print(f"🏛️ archs: \x1b[33;1m{len(archs)}\x1b[0m")
 
 min_train_loss_min_archs = float("+inf")
@@ -21,14 +21,14 @@ min_val_loss_mean_archs = float("+inf")
 for arch in archs:
     summary = arch+"/summary.dat"
     
-    hypers = sorted( [float(child.split("=")[-1]) for child in utils.get_subdir(arch) if child[0]==args.hyper] )
-    seeds = [ utils.get_subdat("%s/%s=%f" % (arch, args.hyper, hyper)) for hyper in hypers ]
+    hypers = sorted( [float(child.split("=")[-1]) for child in utils.get_subdir(arch) if child[0]==args.HYPER] )
+    seeds = [ utils.get_subdat("%s/%s=%f" % (arch, args.HYPER, hyper)) for hyper in hypers ]
 
     print(f"{arch} (hypers: \x1b[33;3m{len(hypers)}\x1b[0m, seeds: \x1b[33;3m{utils.numel(seeds)}\x1b[0m)")
 
-    print("\x1b[1m%8.8s %20.20s %20.20s %20.20s %20.20s %20.20s %20.20s %20.20s %20.20s\x1b[0m" % (args.hyper,"min_train_loss_min","min_train_loss_mean","min_train_loss_top","min_train_loss_bot","min_val_loss_min","min_val_loss_mean","min_val_loss_top","min_val_loss_bot"))
+    print("\x1b[1m%8.8s %20.20s %20.20s %20.20s %20.20s %20.20s %20.20s %20.20s %20.20s\x1b[0m" % (args.HYPER,"min_train_loss_min","min_train_loss_mean","min_train_loss_top","min_train_loss_bot","min_val_loss_min","min_val_loss_mean","min_val_loss_top","min_val_loss_bot"))
     with open(summary,"w") as file:
-        file.write(f"{args.hyper} min_train_loss_min min_train_loss_mean min_train_loss_top min_train_loss_bot min_val_loss_min min_val_loss_mean min_val_loss_top min_val_loss_bot\n")
+        file.write(f"{args.HYPER} min_train_loss_min min_train_loss_mean min_train_loss_top min_train_loss_bot min_val_loss_min min_val_loss_mean min_val_loss_top min_val_loss_bot\n")
     
     min_train_loss_min_hypers = float("+inf")
     min_train_loss_mean_hypers = float("+inf")
@@ -36,7 +36,7 @@ for arch in archs:
     min_val_loss_mean_hypers = float("+inf")
     arch_diverged = 0
     for i, hyper in enumerate(hypers):
-        hyper_path = "%s/%s=%f" % (arch, args.hyper, hyper)
+        hyper_path = "%s/%s=%f" % (arch, args.HYPER, hyper)
         
         min_train_losses = []
         min_val_losses = []

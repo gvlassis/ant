@@ -127,9 +127,9 @@ scheduler = utils.get_scheduler(args.scheduler, optimizer, args.train_batches)
 if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
 
 if master:
-    print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "k", "train_loss", "val_loss", "train_batch_time"))
+    print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
     with open(log_path,"w") as file:
-        file.write(f"train_batch k train_loss val_loss train_time {train_stats_header}\n")
+        file.write(f"train_batch lr0 train_loss val_loss train_time {train_stats_header}\n")
 
 train_time = 0
 min_train_loss = float("+inf")
@@ -160,7 +160,7 @@ for train_batch in range(args.train_batches):
     if (train_batch % args.update_freq == 0 or train_batch == args.train_batches-1) and master:
         train_batch_decorated = "%12.12s" % train_batch
 
-        k_decorated = "%12.12s" % ("%f" % scheduler.get_last_lr()[0])
+        lr0_decorated = "%12.12s" % ("%f" % scheduler.get_last_lr()[0])
         
         if train_loss < min_train_loss:
             min_train_loss = train_loss
@@ -184,7 +184,7 @@ for train_batch in range(args.train_batches):
 
         train_stats = models.utils_models.get_train_stats(model)
 
-        print("%s %s %s %s %s" % (train_batch_decorated, k_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
+        print("%s %s %s %s %s" % (train_batch_decorated, lr0_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
         with open(log_path,"a") as file:
             file.write("%d %f %f %f %d %s\n" % (train_batch, scheduler.get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
 
