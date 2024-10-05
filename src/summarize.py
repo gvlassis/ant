@@ -21,7 +21,7 @@ min_val_loss_mean_archs = float("+inf")
 for arch in archs:
     summary = arch+"/summary.dat"
     
-    hypers = sorted( [float(child.split("=")[-1]) for child in utils.get_subdir(arch) if child[0]==args.HYPER] )
+    hypers = sorted( [float(child.split("=")[-1]) for child in utils.get_subdir(arch) if child.split("=")[0]==args.HYPER] )
     seeds = [ utils.get_subdat("%s/%s=%f" % (arch, args.HYPER, hyper)) for hyper in hypers ]
 
     print(f"{arch} (hypers: \x1b[33;3m{len(hypers)}\x1b[0m, seeds: \x1b[33;3m{utils.numel(seeds)}\x1b[0m)")
