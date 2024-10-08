@@ -15,7 +15,7 @@ parser.add_argument("--vocab_size", type=int, default=50304)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
-parser.add_argument("--ζ", help="Width scaling factor", type=int, default=12)
+parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 
 parser.add_argument("--batch_size", type=int, default=32)
 parser.add_argument("--context", type=int, default=1024)

@@ -20,7 +20,7 @@ parser.add_argument("--P", help="Top-P sampling", type=int, default=0.95)
 parser.add_argument("--vocab_size", type=int, default=50304)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
-parser.add_argument("--ζ", help="Width scaling factor", type=int, default=12)
+parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 
 parser.add_argument("--context", type=int, default=1024)
 args=parser.parse_args()
@@ -29,7 +29,7 @@ model_device = "cuda:0"
 dataset_device = "cpu"
 
 print("🧠 Initializing model")
-model, _ = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, ζ=args.ζ, max_context=args.context)
+model, _ = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, "1/sqrt(d)", args.ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, args.context, False, True)
 model.load_state_dict(torch.load(args.PATH))
 model = model.to(model_device)
 

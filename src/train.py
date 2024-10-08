@@ -45,7 +45,7 @@ parser.add_argument("--label_smoothing", type=float, default=0)
 parser.add_argument("--batch_size", help="Total batch size, over all GPUs and accumulations, for one gradient update", type=int, default=1024)
 parser.add_argument("--micro_batch_size", help="Batch size that fits in every GPU", type=int, default=32)
 parser.add_argument("--context", type=int, default=1024)
-parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=10_000)
+parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=100_000)
 parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=100)
 parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=500)
 
