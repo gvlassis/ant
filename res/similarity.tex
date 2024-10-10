@@ -1,0 +1,47 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \pgfplotsset{colormap/cool}
+
+\begin{document}
+
+\pgfplotstableread{\similaritypath}{\similarity}
+
+\pgfplotstablegetcolsof{\similarity}
+\pgfmathtruncatemacro{\maxelemindex}{\pgfplotsretval-1}
+\def\offset{4}
+
+\foreach \elemindex in {\offset,...,\maxelemindex}{
+
+    \clearpage
+    
+    \pgfplotstablegetcolumnnamebyindex{\elemindex}\of{\similarity}\to{\elemname}
+
+    \begin{Center}
+        \textbf{\Large \elemname}
+    \end{Center}
+
+    \begin{figure}[h!]
+    \Centering
+    \begin{tikzpicture}
+    \begin{axis}[node near coord style={/pgf/number format/fixed,/pgf/number format/precision=2},
+                 enlargelimits=false,
+                 axis line style={draw=none},
+                 tick style={draw=none},
+                 colorbar,
+                 xtick=data,
+                 ytick=data, 
+                 xticklabels from table={\similaritypath}{token1},
+                 yticklabels from table={\similaritypath}{token1},
+                 nodes near coords,
+                 nodes near coords align=center]
+        \addplot[matrix plot, point meta=explicit] table [meta index=\elemindex] {\similaritypath};
+    \end{axis}
+    \end{tikzpicture}
+    \end{figure}
+}
+
+\end{document}

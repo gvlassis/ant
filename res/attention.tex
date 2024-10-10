@@ -1,0 +1,76 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage[a3paper,landscape]{geometry}
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
+    \pgfplotsset{colormap/cool}
+\usepackage{xstring}
+
+\begin{document}
+
+\pgfplotstableread{\attentionpath}{\attention}
+
+\pgfplotstablegetcolsof{\attention}
+\pgfmathtruncatemacro{\len}{\pgfplotsretval}
+\pgfmathtruncatemacro{\maxelemindex}{\len-1}
+\pgfplotstablegetcolumnnamebyindex{\maxelemindex}\of{\attention}\to{\maxelemname}
+\StrBehind{\maxelemname}{.head}[\maxgroupelem]
+\pgfmathtruncatemacro{\groupelems}{\maxgroupelem+1}
+\def\offset{4}
+\pgfmathtruncatemacro{\elems}{\len-\offset}
+\pgfmathtruncatemacro{\groups}{\elems/\groupelems}
+\pgfmathtruncatemacro{\maxgroup}{\groups-1}
+
+\foreach \group in {0,...,\maxgroup}{
+
+    \clearpage
+    
+    \pgfmathtruncatemacro{\groupindex}{\offset+\group*\groupelems)}
+    \pgfplotstablegetcolumnnamebyindex{\groupindex}\of{\attention}\to{\groupname}
+
+    \begin{Center}
+        \textbf{\Large \StrBefore{\groupname}{.}}
+    \end{Center}
+
+    \begin{figure}[h!]
+    \Centering
+    \begin{tikzpicture}
+        
+        \begin{groupplot}[group style={rows=4, columns=4, horizontal sep=2.2cm, vertical sep=1.2cm},
+                          scale=0.6,
+                          colorbar style={width=6cm},
+                          tick label style={font=\tiny},
+                          node near coord style={font=\tiny,/pgf/number format/fixed,/pgf/number format/precision=2},
+                          colorbar horizontal,
+                          colorbar to name=col:attention,
+                          enlargelimits=false,
+                          axis line style={draw=none},
+                          tick style={draw=none},
+                          xtick=data,
+                          ytick=data,
+                          xticklabels from table={\attentionpath}{token1},
+                          yticklabels from table={\attentionpath}{token1},
+                          nodes near coords,
+                          nodes near coords align=center]
+            \pgfplotsforeachungrouped \groupelem in {0,...,\maxgroupelem}{
+
+                \pgfmathtruncatemacro{\groupelemindex}{\groupindex+\groupelem}
+                \pgfplotstablegetcolumnnamebyindex{\groupelemindex}\of{\attention}\to{\groupelemname}
+
+                \edef\tmp{
+                    \noexpand\nextgroupplot[title=\noexpand\StrBehind{\groupelemname}{.}]
+                    \noexpand\addplot[matrix plot, point meta=explicit] table [meta index=\groupelemindex] {\attentionpath};
+                }\tmp
+            }
+        \end{groupplot}
+        
+        \path (group c2r1.above north east) -- node[above]{\pgfplotscolorbarfromname{col:attention}} (group c3r1.above north west);
+
+    \end{tikzpicture}
+    \end{figure}
+}
+
+\end{document}

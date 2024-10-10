@@ -1,0 +1,72 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage[a2paper, landscape, margin=2cm]{geometry}
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
+    \pgfplotsset{colormap/cool}
+\usepackage{xstring}
+
+\begin{document}
+
+\pgfplotstableread{\clusteringpath}{\clustering}
+
+\pgfplotstablegetcolsof{\clustering}
+\pgfmathtruncatemacro{\len}{\pgfplotsretval}
+\pgfmathtruncatemacro{\groupsubgroups}{5}
+\pgfmathtruncatemacro{\maxgroupsubgroup}{\groupsubgroups-1}
+\pgfmathtruncatemacro{\subgroupelems}{2}
+\pgfmathtruncatemacro{\groupelems}{\groupsubgroups*\subgroupelems}
+\def\offset{2}
+\pgfmathtruncatemacro{\elems}{\len-\offset}
+\pgfmathtruncatemacro{\groups}{\elems/\groupelems}
+\pgfmathtruncatemacro{\maxgroup}{\groups-1}
+
+\foreach \group in {0,...,\maxgroup}{
+
+    \clearpage
+    
+    \pgfmathtruncatemacro{\groupindex}{\offset+\group*\groupelems)}
+    \pgfplotstablegetcolumnnamebyindex{\groupindex}\of{\clustering}\to{\groupname}
+
+    \begin{Center}
+        \textbf{\Large \StrBefore[1]{\groupname}{.}}
+    \end{Center}
+
+    \begin{figure}[h!]
+    \Centering
+    \begin{tikzpicture}
+
+        \begin{groupplot}[group style={rows=2, columns=3, horizontal sep=2.2cm, vertical sep=1.2cm},
+                          scale=2,
+                          node near coord style={font=\tiny},
+                          legend to name=leg:clustering,
+                          legend columns=-1,
+                          visualization depends on=value \thisrow{token}\as\token,
+                          nodes near coords=\token]
+            \pgfplotsforeachungrouped \groupsubgroup in {0,...,\maxgroupsubgroup}{
+                
+                \pgfmathtruncatemacro{\groupsubgroupindex}{\groupindex+\groupsubgroup*\subgroupelems}
+                \pgfplotstablegetcolumnnamebyindex{\groupsubgroupindex}\of{\clustering}\to{\groupsubgroupname}
+                \StrBetween[1,2]{\groupsubgroupname}{.}{.}[\groupsubgroupname]
+
+                \pgfmathtruncatemacro{\subgroupelemzeroindex}{\groupsubgroupindex}
+                \pgfmathtruncatemacro{\subgroupelemoneindex}{\groupsubgroupindex+1}
+
+                \edef\tmp{
+                    \noexpand\nextgroupplot[title=\groupsubgroupname]
+                    \noexpand\addplot[only marks, scatter, point meta=explicit symbolic, scatter/classes*={animals={red},professions={green},colors={blue}}] table [x index=\subgroupelemzeroindex, y index=\subgroupelemoneindex, meta=class] {\clusteringpath};
+                    \noexpand\legend{animals,professions,colors}
+                }\tmp
+            }
+        \end{groupplot}
+        
+        \path (group c2r1.above north east) -- node[above]{\pgfplotslegendfromname{leg:clustering}} (group c2r1.above north west);
+
+    \end{tikzpicture}
+    \end{figure}
+}
+
+\end{document}
