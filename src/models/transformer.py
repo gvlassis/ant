@@ -237,6 +237,30 @@ def get_attention(W, x, y, blocks_interval):
 
     return attention
 
+def get_similarity_header(transformer, blocks_interval):
+    similarity_header = "embedding "
+    
+    for block in range(transformer.num_blocks):
+        if block % blocks_interval == 0:
+            similarity_header += f"block{block} "
+
+    # Remove last space
+    similarity_header = similarity_header[:-1]
+
+    return similarity_header
+
+def get_similarity(embeddings, x, y, blocks_interval):    
+    similarity = "%.2f " % torch.nn.functional.cosine_similarity(embeddings[0, x ,:], embeddings[0, y ,:], dim=0)
+    
+    for block in range(1, embeddings.shape[0]):
+        if block % blocks_interval == 0:
+            similarity +=  "%.2f " % torch.nn.functional.cosine_similarity(embeddings[block, x ,:], embeddings[block, y ,:], dim=0)
+
+    # Remove last space
+    similarity = similarity[:-1]
+
+    return similarity
+
 class Transformer(torch.nn.Module):
     def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
         super().__init__()
@@ -315,8 +339,27 @@ class Transformer(torch.nn.Module):
             Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
 
         return W 
+    
+    # Embeddings (BEFORE positional bias)
+    # (batches*)context
+    def get_embeddings(self, ids):
+        context = ids.shape[-1]
+        
+        # (batches*)(num_blocks+1)*context*d
+        embeddings = torch.empty(*ids.shape[:-1], self.num_blocks+1, context, self.d)
 
-    # # Embeddings (before positional bias)
-    # # (batches*)context
-    # def Y_(self, ids):
-    #     return
+        # (batches*)context*d
+        embeddings[...,0,:,:] = self.emb(ids)
+        
+        X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
+        X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
+
+        Y = X_
+        for i, block in enumerate(self.blocks):
+            Y_ = block(Y)
+            
+            embeddings[...,i+1,:,:] = Y_
+            
+            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+
+        return embeddings

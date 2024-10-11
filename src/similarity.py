@@ -14,13 +14,13 @@ parser.add_argument("--scale_type", help="Scaling factor applied prior to softma
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--context", type=int, default=1024)
 
-parser.add_argument("--string", help="The string to be visualized", default="Alice is a nurse. She works in a hospital.")
+parser.add_argument("--string", help="The string to be visualized", default="Bob is a pilot and Alice is a nurse. He works in a plane and she works in a hospital.")
 parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: transformers.PreTrainedTokenizerFast.from_pretrained(x).backend_tokenizer, default="gpt2")
 
 parser.add_argument("--blocks_interval", help="Every how many transformer blocks to check", type=int, default=1)
 args=parser.parse_args()
 
-attention_path = args.PATH.split(".")[0]+"_attention.dat"
+similarity_path = args.PATH.split(".")[0]+"_similarity.dat"
 
 device = "cuda:0"
 
@@ -36,25 +36,25 @@ X = torch.tensor(ids)
 
 model.eval()
 with torch.no_grad():
-    W = model.W( X.to(device) )
+    embeddings = model.get_embeddings( X.to(device) )
 
-attention_header = models.transformer.get_attention_header(model, args.blocks_interval)
-with open(attention_path,"w") as file:
-    file.write(f"x y token1 token2 {attention_header}\n")
+similarity_header = models.transformer.get_similarity_header(model, args.blocks_interval)
+with open(similarity_path,"w") as file:
+    file.write(f"x y token1 token2 {similarity_header}\n")
 
-# How much token1 (x in matrix plot) contributes to the context of token2 (y in matrix plot)
+# How similar token1 (x in matrix plot) is to token2 (y in matrix plot)
 for y, token2 in enumerate(ids):
     print(f"{args.tokenizer.id_to_token(token2)}: {token2}")
     
     for x, token1 in enumerate(ids):
-        with open(attention_path,"a") as file:
+        with open(similarity_path,"a") as file:
             file.write("%d %d %s %s " % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2)))
 
-        attention = models.transformer.get_attention(W, x, y, args.blocks_interval)
+        similarity = models.transformer.get_similarity(embeddings, x, y, args.blocks_interval)
 
-        with open(attention_path,"a") as file:
-            file.write(f"{attention}\n")
+        with open(similarity_path,"a") as file:
+            file.write(f"{similarity}\n")
     
-    with open(attention_path,"a") as file:
+    with open(similarity_path,"a") as file:
             file.write("\n")
 

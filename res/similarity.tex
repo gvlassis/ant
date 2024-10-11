@@ -1,6 +1,7 @@
 \documentclass{article}
     \pagestyle{empty}
 
+\usepackage[landscape, margin=1cm]{geometry}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
@@ -27,7 +28,9 @@
     \begin{figure}[h!]
     \Centering
     \begin{tikzpicture}
-    \begin{axis}[node near coord style={/pgf/number format/fixed,/pgf/number format/precision=2},
+    \begin{axis}[scale=2.6,
+                 xticklabel style={rotate=45, anchor=north east, inner sep=0cm},
+                 node near coord style={font=\scriptsize,/pgf/number format/fixed,/pgf/number format/precision=2},
                  enlargelimits=false,
                  axis line style={draw=none},
                  tick style={draw=none},
