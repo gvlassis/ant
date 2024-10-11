@@ -44,7 +44,7 @@ with open(similarity_path,"w") as file:
 
 # How similar token1 (x in matrix plot) is to token2 (y in matrix plot)
 for y, token2 in enumerate(ids):
-    print(f"{args.tokenizer.id_to_token(token2)}: {token2}")
+    print("%16.16s: %6.6s" % (args.tokenizer.id_to_token(token2), token2))
     
     for x, token1 in enumerate(ids):
         with open(similarity_path,"a") as file:

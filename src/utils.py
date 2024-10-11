@@ -190,3 +190,4 @@ def print_schedule(train_batches, scheduler):
     plotext.plot(range(train_batches), lrs, marker="braille", label="lr")
     plotext.show()
     plotext.clear_figure()
+

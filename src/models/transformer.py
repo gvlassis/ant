@@ -249,7 +249,7 @@ def get_similarity_header(transformer, blocks_interval):
 
     return similarity_header
 
-def get_similarity(embeddings, x, y, blocks_interval):    
+def get_similarity(embeddings, x, y, blocks_interval):
     similarity = "%.2f " % torch.nn.functional.cosine_similarity(embeddings[0, x ,:], embeddings[0, y ,:], dim=0)
     
     for block in range(1, embeddings.shape[0]):
@@ -260,6 +260,38 @@ def get_similarity(embeddings, x, y, blocks_interval):
     similarity = similarity[:-1]
 
     return similarity
+
+def get_clustering_header(transformer, blocks_interval):
+    clustering_header = "embedding.random.x embedding.random.y "\
+                        "embedding.pca.x embedding.pca.y "\
+                        "embedding.mds.x embedding.mds.y "\
+                        "embedding.tsne.x embedding.tsne.y "\
+                        "embedding.umap.x embedding.umap.y "
+
+    for block in range(transformer.num_blocks):
+        if block % blocks_interval == 0:
+            clustering_header += f"block{block}.random.x block{block}.random.y "\
+                                 f"block{block}.pca.x block{block}.pca.y "\
+                                 f"block{block}.mds.x block{block}.mds.y "\
+                                 f"block{block}.tsne.x block{block}.tsne.y "\
+                                 f"block{block}.umap.x block{block}.umap.y "
+
+    # Remove last space
+    clustering_header = clustering_header[:-1]
+
+    return clustering_header
+
+def get_clustering(random, pca, mds, tsne, umap, blocks_interval):
+    clustering = "%f %f %f %f %f %f %f %f %f %f " % (random[0,0], random[0,1], pca[0,0], pca[0,1], mds[0,0], mds[0,1], tsne[0,0], tsne[0,1], umap[0,0], umap[0,1])
+    
+    for block in range(random.shape[0]-1):
+        if block % blocks_interval == 0:
+            clustering += "%f %f %f %f %f %f %f %f %f %f " % (random[block+1,0], random[block+1,1], pca[block+1,0], pca[block+1,1], mds[block+1,0], mds[block+1,1], tsne[block+1,0], tsne[block+1,1], umap[block+1,0], umap[block+1,1])
+
+    # Remove last space
+    clustering = clustering[:-1]
+
+    return clustering
 
 class Transformer(torch.nn.Module):
     def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
