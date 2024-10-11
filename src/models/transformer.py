@@ -5,14 +5,14 @@ import math
 
 SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 
-# Pure PyTorch implementation of torch.nn.functional.scaled_dot_product_attention that returns the attention weights after softmax W instead (https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
+# Pure PyTorch implementation of torch.nn.functional.scaled_dot_product_attention that returns the attention weights (lower triangular) after softmax W instead (https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html)
 def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None) -> torch.Tensor:
     L, S = query.size(-2), key.size(-2)
     scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
-    attn_bias = torch.zeros(L, S, dtype=query.dtype)
+    attn_bias = torch.zeros(L, S, dtype=query.dtype, device=query.device)
     if is_causal:
         assert attn_mask is None
-        temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+        temp_mask = torch.ones(L, S, dtype=torch.bool, device=query.device).tril(diagonal=0)
         attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
         attn_bias.to(query.dtype)
 
@@ -210,6 +210,33 @@ def apply_pos(pos_type, emb, pos):
         
     return X
 
+def get_attention_header(transformer, blocks_interval):
+    attention_header = ""
+    
+    for block in range(transformer.num_blocks):
+        if block % blocks_interval == 0:
+            for head in range(transformer.heads):
+                attention_header += f"block{block}.head{head} "
+
+    # Remove last space
+    attention_header = attention_header[:-1]
+
+    return attention_header
+
+def get_attention(W, x, y, blocks_interval):
+    attention = ""
+    
+    for block in range(W.shape[0]):
+        if block % blocks_interval == 0:
+            for head in range(W.shape[1]):
+                # rows->y, columns->x
+                attention +=  "%.2f " % W[block, head, y, x]
+
+    # Remove last space
+    attention = attention[:-1]
+
+    return attention
+
 class Transformer(torch.nn.Module):
     def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, scale_type="1/sqrt(d)", exp_factor=4, dropout=0, pos_type="sin", max_context=128, all_pos=False, norm_type="layer", bias=True, act=torch.nn.ReLU(), l1_type="linear"):
         super().__init__()
@@ -273,7 +300,7 @@ class Transformer(torch.nn.Module):
         context = ids.shape[-1]
         
         # (batches*)num_blocks*heads*context*context
-        W = torch.empty(*ids.shape[:-1], num_blocks, self.heads, context, context)
+        W = torch.empty(*ids.shape[:-1], self.num_blocks, self.heads, context, context)
         
         # (batches*)context*d
         X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])

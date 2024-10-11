@@ -1,7 +1,7 @@
 \documentclass{article}
     \pagestyle{empty}
 
-\usepackage[a3paper,landscape]{geometry}
+\usepackage[a3paper,landscape, margin=1cm]{geometry}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
@@ -39,10 +39,11 @@
     \Centering
     \begin{tikzpicture}
         
-        \begin{groupplot}[group style={rows=4, columns=4, horizontal sep=2.2cm, vertical sep=1.2cm},
-                          scale=0.6,
+        \begin{groupplot}[group style={rows=4, columns=4, horizontal sep=2.2cm, vertical sep=2.0cm},
+                          scale=1.1,
                           colorbar style={width=6cm},
-                          tick label style={font=\tiny},
+                          tick label style={font=\scriptsize},
+                          xticklabel style={rotate=45, anchor=north east, inner sep=0cm},
                           node near coord style={font=\tiny,/pgf/number format/fixed,/pgf/number format/precision=2},
                           colorbar horizontal,
                           colorbar to name=col:attention,

@@ -16,15 +16,13 @@ parser.add_argument("--scale_type", help="Scaling factor applied prior to softma
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--context", type=int, default=1024)
 
-parser.add_argument("--starting_string", help="The string that the model will continue", default="On Christmas Day, the gifts were brought by Santa")
+parser.add_argument("--string", help="The string to be visualized", default="Alice is a nurse. She works in a hospital.")
 parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: transformers.PreTrainedTokenizerFast.from_pretrained(x).backend_tokenizer, default="gpt2")
-parser.add_argument("--unk_id", help="Unknown special token id", type=int, default=50257)
-parser.add_argument("--eot_id", help="End-of-text special token id", type=int, default=50256)
-parser.add_argument("--max_tokens", help="Max number of tokens to be generated (if [EOT] is not generated)", type=int, default=128)
-parser.add_argument("--T", help="Softmax temperature", type=int, default=1)
-parser.add_argument("--K", help="Top-K sampling", type=int, default=50)
-parser.add_argument("--P", help="Top-P sampling", type=int, default=0.95)
+
+parser.add_argument("--blocks_interval", help="Every how many blocks to check", type=int, default=1)
 args=parser.parse_args()
+
+attention_path = args.PATH.split(".")[0]+"_attention.dat"
 
 device = "cuda:0"
 
@@ -33,4 +31,32 @@ model, _ = models.utils_models.get_model_optimizer(args.vocab_size, args.family,
 model.load_state_dict(torch.load(args.PATH, weights_only=True))
 model = model.to(device)
 
-utils.generate_text(args.starting_string, args.tokenizer, args.unk_id, args.eot_id, model, args.context, args.max_tokens, args.T, args.K, args.P)
+ids = args.tokenizer.encode(args.string).ids
+print(f"\x1b[1m{len(ids)} tokens\x1b[0m")
+
+X = torch.tensor(ids)
+
+model.eval()
+with torch.no_grad():
+    W = model.W( X.to(device) )
+
+attention_header = models.transformer.get_attention_header(model, args.blocks_interval)
+with open(attention_path,"w") as file:
+    file.write(f"x y token1 token2 {attention_header}\n")
+
+# How much token1 (x in matrix plot) contributes to the context of token2 (y in matrix plot)
+for y, token2 in enumerate(ids):
+    print(f"{args.tokenizer.id_to_token(token2)}: {token2}")
+    
+    for x, token1 in enumerate(ids):
+        with open(attention_path,"a") as file:
+            file.write("%d %d %s %s " % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2)))
+
+        attention = models.transformer.get_attention(W, x, y, args.blocks_interval)
+
+        with open(attention_path,"a") as file:
+            file.write(f"{attention}\n")
+    
+    with open(attention_path,"a") as file:
+            file.write("\n")
+
