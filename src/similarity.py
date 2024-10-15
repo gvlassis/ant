@@ -47,14 +47,10 @@ for y, token2 in enumerate(ids):
     print("%16.16s: %6.6s" % (args.tokenizer.id_to_token(token2), token2))
     
     for x, token1 in enumerate(ids):
+        similarity = models.transformer.get_similarity(embeddings[:, x, :], embeddings[:, y, :], args.blocks_interval)
         with open(similarity_path,"a") as file:
-            file.write("%d %d %s %s " % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2)))
+            file.write("%d %d %s %s %s\n" % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2), similarity))
 
-        similarity = models.transformer.get_similarity(embeddings, x, y, args.blocks_interval)
-
-        with open(similarity_path,"a") as file:
-            file.write(f"{similarity}\n")
-    
     with open(similarity_path,"a") as file:
             file.write("\n")
 

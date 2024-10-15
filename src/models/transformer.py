@@ -223,14 +223,14 @@ def get_attention_header(transformer, blocks_interval):
 
     return attention_header
 
-def get_attention(W, x, y, blocks_interval):
+def get_attention(W, blocks_interval):
     attention = ""
     
     for block in range(W.shape[0]):
         if block % blocks_interval == 0:
             for head in range(W.shape[1]):
                 # rows->y, columns->x
-                attention +=  "%.2f " % W[block, head, y, x]
+                attention +=  "%.2f " % W[block, head]
 
     # Remove last space
     attention = attention[:-1]
@@ -249,12 +249,12 @@ def get_similarity_header(transformer, blocks_interval):
 
     return similarity_header
 
-def get_similarity(embeddings, x, y, blocks_interval):
-    similarity = "%.2f " % torch.nn.functional.cosine_similarity(embeddings[0, x ,:], embeddings[0, y ,:], dim=0)
+def get_similarity(embeddings_x, embeddings_y, blocks_interval):
+    similarity = "%.2f " % torch.nn.functional.cosine_similarity(embeddings_x[0,:], embeddings_y[0,:], dim=0)
     
-    for block in range(1, embeddings.shape[0]):
+    for block in range(embeddings_x.shape[0]-1):
         if block % blocks_interval == 0:
-            similarity +=  "%.2f " % torch.nn.functional.cosine_similarity(embeddings[block, x ,:], embeddings[block, y ,:], dim=0)
+            similarity +=  "%.2f " % torch.nn.functional.cosine_similarity(embeddings_x[block+1,:], embeddings_y[block+1,:], dim=0)
 
     # Remove last space
     similarity = similarity[:-1]

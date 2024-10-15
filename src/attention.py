@@ -47,13 +47,10 @@ for y, token2 in enumerate(ids):
     print("%16.16s: %6.6s" % (args.tokenizer.id_to_token(token2), token2))
     
     for x, token1 in enumerate(ids):
+        # rows->y, columns->x
+        attention = models.transformer.get_attention(W[..., y, x], args.blocks_interval)
         with open(attention_path,"a") as file:
-            file.write("%d %d %s %s " % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2)))
-
-        attention = models.transformer.get_attention(W, x, y, args.blocks_interval)
-
-        with open(attention_path,"a") as file:
-            file.write(f"{attention}\n")
+            file.write("%d %d %s %s %s\n" % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2), attention))
     
     with open(attention_path,"a") as file:
             file.write("\n")

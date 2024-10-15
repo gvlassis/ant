@@ -155,22 +155,16 @@ with open(clustering_path,"w") as file:
     file.write(f"token class {clustering_header}\n")
 
 for i, animal in enumerate(animals):
-    
     clustering = models.transformer.get_clustering(animals_random[i], animals_pca[i], animals_mds[i], animals_tsne[i], animals_umap[i], args.blocks_interval)
-
     with open(clustering_path,"a") as file:
         file.write(f"{animal} animals {clustering}\n")
 
 for i, profession in enumerate(professions):
-    
     clustering = models.transformer.get_clustering(professions_random[i], professions_pca[i], professions_mds[i], professions_tsne[i], professions_umap[i], args.blocks_interval)
-
     with open(clustering_path,"a") as file:
         file.write(f"{profession} professions {clustering}\n")
 
 for i, color in enumerate(colors):
-    
     clustering = models.transformer.get_clustering(colors_random[i], colors_pca[i], colors_mds[i], colors_tsne[i], colors_umap[i], args.blocks_interval)
-
     with open(clustering_path,"a") as file:
         file.write(f"{color} colors {clustering}\n")
