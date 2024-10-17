@@ -46,6 +46,7 @@ parser.add_argument("--batch_size", help="Total batch size, over all GPUs and ac
 parser.add_argument("--micro_batch_size", help="Batch size that fits in every GPU", type=int, default=32)
 parser.add_argument("--context", type=int, default=1024)
 parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=100_000)
+parser.add_argument("--thresh", help="Artificially stop training when the validation loss first crosses this threshold", type=float, default=0)
 parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=100)
 parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be printed", type=int, default=500)
 
@@ -134,11 +135,16 @@ if master:
 train_time = 0
 min_train_loss = float("+inf")
 min_val_loss = float("+inf")
+terminate = torch.tensor(False).to(model_device)
 for train_batch in range(args.train_batches):
+    if torchelastic: torch.distributed.broadcast(terminate, src=0)
+    if terminate:
+        if torchelastic: torch.distributed.destroy_process_group()
+        exit(1)
+    
     train_batch_start = utils.get_sync_time(model_device)
     
     model.train()
-    # I can only use all_reduce with Tensors
     train_loss = torch.tensor(0.0).to(model_device)
     for micro_train_batch in range(accumulation):
         batch_train_X, batch_train_Y = next(train_iterator)
@@ -188,9 +194,13 @@ for train_batch in range(args.train_batches):
         with open(log_path,"a") as file:
             file.write("%d %f %f %f %d %s\n" % (train_batch, scheduler.get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
 
+        if val_loss < args.thresh:
+            terminate = torch.tensor(True).to(model_device)
+            
     scaler.step(optimizer)
     optimizer.zero_grad()
     scaler.update()
     scheduler.step()
 
 if torchelastic: torch.distributed.destroy_process_group()
+exit(0)
