@@ -21,8 +21,7 @@ parser.add_argument("--context", type=int, default=1024)
 parser.add_argument("--batches", help="The number of batches used", type=int, default=100)
 args=parser.parse_args()
 
-model_device = "cuda:0"
-dataset_device = "cpu"
+device = "cuda:0"
 
 print("🧠 Initializing model")
 model, _ = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.scale_type, args.ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, args.context, False, True)
@@ -33,12 +32,12 @@ model.load_state_dict(torch.load(args.PATH, weights_only=True))
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-large")
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-xl")
 
-model = model.to(model_device)
+model = model.to(device)
 
 print("💾 Loading dataset")
-train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_device, args.batch_size, args.context)
-val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.batch_size, args.context)
-test_iterator = data.utils_data.get_iterator(args.dataset, "test", dataset_device, args.batch_size, args.context)
+train_iterator = data.utils_data.get_iterator(args.dataset, "train", "cpu", args.batch_size, args.context)
+val_iterator = data.utils_data.get_iterator(args.dataset, "val", "cpu", args.batch_size, args.context)
+test_iterator = data.utils_data.get_iterator(args.dataset, "test", "cpu", args.batch_size, args.context)
 
 train_loss = data.utils_data.approximate_loss(args.batches, train_iterator, args.dataset, model)
 print("train_loss: %f" % train_loss)

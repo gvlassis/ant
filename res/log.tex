@@ -8,7 +8,6 @@
     \usepgfplotslibrary{groupplots}
 \usepackage{xstring}
 \usepackage{underscore}
-\usepackage{utils}
 
 \begin{document}
 
@@ -17,8 +16,8 @@
 \begin{tikzpicture}
 \begin{groupplot}[group style={rows=2, columns=2, horizontal sep=2.2cm, vertical sep=1.8cm},
                   no marks]
-    \nextgroupplot[title=schedule, xlabel=train_batch, ylabel=k]
-    \addplot table [x=train_batch, y=k] {\logpath};
+    \nextgroupplot[title=schedule, xlabel=train_batch, ylabel=lr0]
+    \addplot table [x=train_batch, y=lr0] {\logpath};
 
     \nextgroupplot[xlabel=train_batch, ylabel=loss]
     \addplot table [x=train_batch, y=train_loss] {\logpath};

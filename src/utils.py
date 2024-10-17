@@ -5,8 +5,17 @@ import time
 import unicodedata
 import copy
 import plotext
+import numpy
+import scipy
+import models.utils_models
+import data.utils_data
 import warnings
 warnings.filterwarnings("ignore", module="torch.optim.lr_scheduler")
+
+script_path = os.path.abspath(__file__)
+src_path = os.path.dirname(script_path)
+root_path = os.path.dirname(src_path)
+out_path = root_path + "/out"
 
 SCHEDULERS = ["trapezoidal", "1cycle", "cos", "constant"]
 
@@ -191,3 +200,37 @@ def print_schedule(train_batches, scheduler):
     plotext.show()
     plotext.clear_figure()
 
+def cdf(samples, start=0.01, stop=1000, num=1000):
+    kde = scipy.stats.gaussian_kde(samples)
+
+    x = numpy.linspace(start=start, stop=stop, num=num)
+
+    # PDF
+    y_ = kde.evaluate(x)
+
+    # CDF
+    y = numpy.cumsum(y_)
+    y /= y[-1]
+
+    return x, y
+
+def write_features(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, start, stop, num):    
+    features_path = "%s/%s%dfeatures.dat" % (out_path, arch, ζ)
+    with open(features_path, "w") as file:
+        file.write("x y\n")
+
+    model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
+    model_path = "%s/%s%d.pt" % (out_path, arch, ζ)
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model = model.to(device)
+
+    model.eval()
+    with torch.no_grad():
+        embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
+
+    print(f"📈 Calculating CDF ({arch}, mean={embeddings[...,block,:,:].abs().mean()})")
+    xs, ys = cdf(embeddings[...,block,:,:].abs().flatten().tolist(), start, stop, num)
+
+    for x, y in zip(xs, ys):
+        with open(features_path, "a") as file:
+            file.write("%f %f\n" % (x, y))
