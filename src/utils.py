@@ -214,9 +214,9 @@ def cdf(samples, start=0.01, stop=1000, num=1000):
 
     return x, y
 
-def write_features(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, start, stop, num):    
-    features_path = "%s/%s%dfeatures.dat" % (out_path, arch, ζ)
-    with open(features_path, "w") as file:
+def write_features_cdf(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, start, stop, num):    
+    features_cdf_path = "%s/%s%dfeaturescdf.dat" % (out_path, arch, ζ)
+    with open(features_cdf_path, "w") as file:
         file.write("x y\n")
 
     model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
@@ -227,10 +227,39 @@ def write_features(vocab_size, family, parametrization, scale_type, ζ, context,
     model.eval()
     with torch.no_grad():
         embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
+    
+    features = embeddings[...,block,:,:].abs()
 
-    print(f"📈 Calculating CDF ({arch}, mean={embeddings[...,block,:,:].abs().mean()})")
-    xs, ys = cdf(embeddings[...,block,:,:].abs().flatten().tolist(), start, stop, num)
+    print("📈 Calculating CDF (%s, mean=%.2f)" % (arch, features.mean()))
+    xs, ys = cdf(features.flatten().tolist(), start, stop, num)
 
     for x, y in zip(xs, ys):
-        with open(features_path, "a") as file:
+        with open(features_cdf_path, "a") as file:
             file.write("%f %f\n" % (x, y))
+
+def write_features_matrix(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
+    features_matrix_path = "%s/%s%dfeaturesmatrix.dat" % (out_path, arch, ζ)
+    with open(features_matrix_path, "w") as file:
+        file.write("x y z\n")
+
+    model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
+    model_path = "%s/%s%d.pt" % (out_path, arch, ζ)
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model = model.to(device)
+
+    model.eval()
+    with torch.no_grad():
+        embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
+    
+    features = embeddings[...,block,:,:]
+
+    print("%2.2s %12.12s %12.12s %12.12s %12.12s %12.12s %10.10s %8.8s" % (ζ, arch, "%.2f" % features.mean(), "%.2f" % features.std(), "%.2f" % features.min(), "%.2f" % features.max(), features.shape[2], features.shape[1]))
+    features = features.mean(dim=0)
+    
+    for feature in range(features.shape[1]):
+        for token in range(features.shape[0]):
+            with open(features_matrix_path, "a") as file:
+                file.write("%d %d %f\n" % (token, feature, features[token,feature]))
+
+        with open(features_matrix_path, "a") as file:
+            file.write("\n")

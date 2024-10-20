@@ -1,0 +1,36 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage[a2paper, landscape, margin=1cm]{geometry}
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \pgfplotsset{colormap/viridis}
+
+\pgfmathtruncatemacro{\maxtoken}{\context-1}
+\pgfmathtruncatemacro{\maxfeature}{\d-1}
+
+\begin{document}
+
+\begin{figure}
+\Centering
+\begin{tikzpicture}
+\begin{axis}[width=50cm,
+             height=(\d/\context)*50cm,
+             xtick={0,\maxtoken},
+             ytick={0,\maxfeature},
+             enlargelimits=false,
+             xlabel=features,
+             ylabel=tokens,
+             label style={font=\LARGE},
+             tick label style={font=\LARGE},
+             point meta min=-1000,
+             point meta max=1000,
+             colorbar horizontal,
+             colorbar style={anchor=north,at={(0.5,1.2)}}]
+    \addplot[matrix plot, point meta=explicit] table [meta=z] {\featuresmatrixpath};
+\end{axis}
+\end{tikzpicture}
+\end{figure}
+
+\end{document}
