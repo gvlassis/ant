@@ -200,7 +200,7 @@ def print_schedule(train_batches, scheduler):
     plotext.show()
     plotext.clear_figure()
 
-def cdf(samples, start=0.01, stop=1000, num=1000):
+def cdf(samples, start=1, stop=1000, num=1000):
     kde = scipy.stats.gaussian_kde(samples)
 
     x = numpy.linspace(start=start, stop=stop, num=num)
@@ -251,10 +251,20 @@ def write_features_matrix(vocab_size, family, parametrization, scale_type, ζ, c
     with torch.no_grad():
         embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
     
-    features = embeddings[...,block,:,:]
+    features = embeddings[...,block,:,:].mean(dim=0)
 
-    print("%2.2s %12.12s %12.12s %12.12s %12.12s %12.12s %10.10s %8.8s" % (ζ, arch, "%.2f" % features.mean(), "%.2f" % features.std(), "%.2f" % features.min(), "%.2f" % features.max(), features.shape[2], features.shape[1]))
-    features = features.mean(dim=0)
+    std1 = ((features.mean()-1*features.std()<features) & (features<features.mean()+1*features.std())).sum()*100/features.numel()
+    std2 = ((features.mean()-2*features.std()<features) & (features<features.mean()+2*features.std())).sum()*100/features.numel()
+    std3 = ((features.mean()-3*features.std()<features) & (features<features.mean()+3*features.std())).sum()*100/features.numel()
+    skew = scipy.stats.skew(features.flatten().tolist())
+    kurt = scipy.stats.kurtosis(features.flatten().tolist())
+    # See https://arxiv.org/abs/2405.19279
+    s = (features**2).mean(dim=0).sqrt()
+    kurtrms = scipy.stats.kurtosis(s.tolist())
+    agg = features.abs().max(dim=1).values/features.abs().median(dim=1).values
+    mmr = agg.mean()
+
+    print("%2.2s %8.8s %8.8s %12.12s %8.8s %8.8s %10.10s %10.10s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s" % (ζ, features.shape[1], features.shape[0], arch, "%.2f" % features.mean(), "%.2f" % features.std(), "%.2f" % features.min(), "%.2f" % features.max(), "%.2f%%" % std1.item(), "%.2f%%" % std2.item(), "%.2f%%" % std3.item(), "%.2f" % skew, "%.2f" % kurt, "%.2f" % kurtrms, "%.2f" % mmr.item()))
     
     for feature in range(features.shape[1]):
         for token in range(features.shape[0]):

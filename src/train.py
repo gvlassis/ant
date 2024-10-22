@@ -27,6 +27,7 @@ parser.add_argument("--parametrization", help="(a)bc parametrization as defined 
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=1)
 
+parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=True)
 parser.add_argument("--c_input", type=float, default=0.02)
 parser.add_argument("--c_hidden", type=float, default=0.4)
 parser.add_argument("--c_output", type=float, default=0.4)
@@ -84,6 +85,21 @@ log_path = args.SUBPATH+".dat"
 model_path = args.SUBPATH+".pt"
 graph_path = args.SUBPATH+".pdf"
 
+if args.decoupling:
+    c_input = args.c_input
+    c_hidden = args.c_hidden
+    c_output = args.c_output
+    k_input = args.k_input
+    k_hidden = args.k_hidden
+    k_output = args.k_output
+else:
+    c_input = args.c_input
+    c_hidden = args.c_input
+    c_output = args.c_input
+    k_input = args.k_input
+    k_hidden = args.k_input
+    k_output = args.k_input
+
 model_device_type = "cuda"
 model_device = f"{model_device_type}:{model_device_index}"
 if args.dataset_device_type == "cpu":
@@ -96,7 +112,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master: print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.scale_type, args.ζ, args.c_input, args.c_hidden, args.c_output, args.k_input, args.k_hidden, args.k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master)
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.scale_type, args.ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master)
 model = model.to(model_device)
 if args.info:
     batch_X, _ = next(train_iterator)

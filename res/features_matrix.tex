@@ -24,10 +24,10 @@
              ylabel=tokens,
              label style={font=\LARGE},
              tick label style={font=\LARGE},
-             point meta min=-1000,
-             point meta max=1000,
              colorbar horizontal,
-             colorbar style={anchor=north,at={(0.5,1.2)}}]
+             colorbar style={anchor=outer south,
+                             at={(0.5,1)},
+                             xtick={\pgfkeysvalueof{/pgfplots/xmin}, 0, \pgfkeysvalueof{/pgfplots/xmax}}}]
     \addplot[matrix plot, point meta=explicit] table [meta=z] {\featuresmatrixpath};
 \end{axis}
 \end{tikzpicture}
