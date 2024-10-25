@@ -30,8 +30,8 @@ print("🧠 Initializing models")
 for ζ in [1,2,4,8,16]:
     print(f"\x1b[1mζ={ζ}\x1b[0m")
     
-    utils.write_features_cdf(args.vocab_size, args.family, "sp", args.scale_type, ζ, args.context, "sp", device, args.dataset, batch_X, args.block, args.start, args.stop, args.num)
+    utils.write_distribution(args.vocab_size, args.family, "sp", args.scale_type, ζ, args.context, "sp", device, args.dataset, batch_X, args.block, args.start, args.stop, args.num)
 
-    utils.write_features_cdf(args.vocab_size, args.family, "mup", args.scale_type, ζ, args.context, "mup", device, args.dataset, batch_X, args.block, args.start, args.stop, args.num)
+    utils.write_distribution(args.vocab_size, args.family, "mup", args.scale_type, ζ, args.context, "mup", device, args.dataset, batch_X, args.block, args.start, args.stop, args.num)
 
-    utils.write_features_cdf(args.vocab_size, args.family, "mup", args.scale_type, ζ, args.context, "mupthresh", device, args.dataset, batch_X, args.block, args.start, args.stop, args.num)
+    utils.write_distribution(args.vocab_size, args.family, "mup", args.scale_type, ζ, args.context, "mupthresh", device, args.dataset, batch_X, args.block, args.start, args.stop, args.num)

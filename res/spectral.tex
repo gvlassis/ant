@@ -1,0 +1,64 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
+
+\begin{document}
+
+\begin{figure}
+\Centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={rows=2, columns=3, horizontal sep=1cm, vertical sep=1.6cm},
+                  scale=0.5,
+                  legend to name=leg:spectral,
+                  legend columns=-1]
+    \nextgroupplot[title={$\zeta=1$}]
+    \addplot+[mark=none] table {../out/sp1spectral.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup1spectral.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh1spectral.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=2$}]
+    \addplot+[mark=none] table {../out/sp2spectral.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup2spectral.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh2spectral.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=4$}]
+    \addplot+[mark=none] table {../out/sp4spectral.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup4spectral.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh4spectral.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=8$}]
+    \addplot+[mark=none] table {../out/sp8spectral.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup8spectral.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh8spectral.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=16$}]
+    \addplot+[mark=none] table {../out/sp16spectral.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup16spectral.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh16spectral.dat};
+    \addlegendentry{mupthres}
+\end{groupplot}
+
+\path (group c2r1.above north east) -- node[above]{\pgfplotslegendfromname{leg:spectral}} (group c2r1.above north west);
+
+\end{tikzpicture}
+\end{figure}
+
+\end{document}

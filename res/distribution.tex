@@ -1,0 +1,65 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
+
+\begin{document}
+
+\begin{figure}
+\Centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={rows=2, columns=3, horizontal sep=1cm, vertical sep=1.6cm},
+                  scale=0.5,
+                  legend to name=leg:distribution,
+                  legend columns=-1,
+                  xmode=log]
+    \nextgroupplot[title={$\zeta=1$}]
+    \addplot+[mark=none] table {../out/sp1distribution.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup1distribution.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh1distribution.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=2$}]
+    \addplot+[mark=none] table {../out/sp2distribution.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup2distribution.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh2distribution.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=4$}]
+    \addplot+[mark=none] table {../out/sp4distribution.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup4distribution.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh4distribution.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=8$}]
+    \addplot+[mark=none] table {../out/sp8distribution.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup8distribution.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh8distribution.dat};
+    \addlegendentry{mupthres}
+
+    \nextgroupplot[title={$\zeta=16$}]
+    \addplot+[mark=none] table {../out/sp16distribution.dat};
+    \addlegendentry{sp}
+    \addplot+[mark=none] table {../out/mup16distribution.dat};
+    \addlegendentry{mup}
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh16distribution.dat};
+    \addlegendentry{mupthres}
+\end{groupplot}
+
+\path (group c2r1.above north east) -- node[above]{\pgfplotslegendfromname{leg:distribution}} (group c2r1.above north west);
+
+\end{tikzpicture}
+\end{figure}
+
+\end{document}
