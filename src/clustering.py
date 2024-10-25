@@ -5,6 +5,8 @@ import models.utils_models
 import transformers
 import utils
 import numpy
+import sklearn.cluster
+import sklearn.metrics
 import sklearn.random_projection
 import sklearn.decomposition
 import sklearn.manifold
@@ -20,6 +22,7 @@ parser.add_argument("--scale_type", help="Scaling factor applied prior to softma
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--context", type=int, default=1024)
 
+parser.add_argument("--classes", help="Number of classes (e.g. animals, professions, colors) of words", type=int, default=3)
 parser.add_argument("--string", help="The string to be visualized", default="Some animals: cat, dog, tiger, horse, bat, eagle. Some professions: chef, vet, doctor, pilot, waiter, nurse. Some colors: brown, green, blue, red, yellow, purple.")
 parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: transformers.PreTrainedTokenizerFast.from_pretrained(x).backend_tokenizer, default="gpt2")
 
@@ -91,32 +94,38 @@ colors_umap = numpy.empty((len(colors), model.num_blocks+1, 2))
 animals_embeddings = [embeddings[0,animal_index,:] for animal_index in animals_indices]
 professions_embeddings = [embeddings[0,profession_index,:] for profession_index in professions_indices]
 colors_embeddings = [embeddings[0,color_index,:] for color_index in colors_indices]
+X = numpy.array(animals_embeddings+professions_embeddings+colors_embeddings)
+Y = [0]*len(animals) + [1]*len(professions) + [2]*len(colors)
+Y_ = sklearn.cluster.KMeans(args.classes).fit_predict(X)
+sil = sklearn.metrics.silhouette_score(X, Y_)
+ari = sklearn.metrics.adjusted_rand_score(Y, Y_)
+dbi = sklearn.metrics.davies_bouldin_score(X, Y_)
+print("%d %.2f %.2f %.2f" % (0, sil, ari, dbi))
 
-random = sklearn.random_projection.GaussianRandomProjection(n_components=2).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+random = sklearn.random_projection.GaussianRandomProjection(n_components=2).fit_transform(X)
 animals_random[:,0,:] = random[:len(animals)]
 professions_random[:,0,:] = random[len(animals):len(animals)+len(professions)]
 colors_random[:,0,:] = random[len(animals)+len(professions):]
 
-pca = sklearn.decomposition.PCA(n_components=2).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+pca = sklearn.decomposition.PCA(n_components=2).fit_transform(X)
 animals_pca[:,0,:] = pca[:len(animals)]
 professions_pca[:,0,:] = pca[len(animals):len(animals)+len(professions)]
 colors_pca[:,0,:] = pca[len(animals)+len(professions):]
 
-mds = sklearn.manifold.MDS(n_components=2).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+mds = sklearn.manifold.MDS(n_components=2).fit_transform(X)
 animals_mds[:,0,:] = mds[:len(animals)]
 professions_mds[:,0,:] = mds[len(animals):len(animals)+len(professions)]
 colors_mds[:,0,:] = mds[len(animals)+len(professions):]
 
-tsne = sklearn.manifold.TSNE(n_components=2, perplexity=6).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+tsne = sklearn.manifold.TSNE(n_components=2, perplexity=6).fit_transform(X)
 animals_tsne[:,0,:] = tsne[:len(animals)]
 professions_tsne[:,0,:] = tsne[len(animals):len(animals)+len(professions)]
 colors_tsne[:,0,:] = tsne[len(animals)+len(professions):]
 
-umap_ = umap.UMAP(n_components=2, n_neighbors=6).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+umap_ = umap.UMAP(n_components=2, n_neighbors=6).fit_transform(X)
 animals_umap[:,0,:] = umap_[:len(animals)]
 professions_umap[:,0,:] = umap_[len(animals):len(animals)+len(professions)]
 colors_umap[:,0,:] = umap_[len(animals)+len(professions):]
-
 
 # Transformer blocks
 for block in range(model.num_blocks):
@@ -124,28 +133,35 @@ for block in range(model.num_blocks):
         animals_embeddings = [embeddings[block+1,animal_index,:] for animal_index in animals_indices]
         professions_embeddings = [embeddings[block+1,profession_index,:] for profession_index in professions_indices]
         colors_embeddings = [embeddings[block+1,color_index,:] for color_index in colors_indices]
+        X = numpy.array(animals_embeddings+professions_embeddings+colors_embeddings)
+        Y = [0]*len(animals) + [1]*len(professions) + [2]*len(colors)
+        Y_ = sklearn.cluster.KMeans(args.classes).fit_predict(X)
+        sil = sklearn.metrics.silhouette_score(X, Y_)
+        ari = sklearn.metrics.adjusted_rand_score(Y, Y_)
+        dbi = sklearn.metrics.davies_bouldin_score(X, Y_)
+        print("%d %.2f %.2f %.2f" % (block+1, sil, ari, dbi))
 
-        random = sklearn.random_projection.GaussianRandomProjection(n_components=2).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+        random = sklearn.random_projection.GaussianRandomProjection(n_components=2).fit_transform(X)
         animals_random[:,block+1,:] = random[:len(animals)]
         professions_random[:,block+1,:] = random[len(animals):len(animals)+len(professions)]
         colors_random[:,block+1,:] = random[len(animals)+len(professions):]
 
-        pca = sklearn.decomposition.PCA(n_components=2).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+        pca = sklearn.decomposition.PCA(n_components=2).fit_transform(X)
         animals_pca[:,block+1,:] = pca[:len(animals)]
         professions_pca[:,block+1,:] = pca[len(animals):len(animals)+len(professions)]
         colors_pca[:,block+1,:] = pca[len(animals)+len(professions):]
 
-        mds = sklearn.manifold.MDS(n_components=2).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+        mds = sklearn.manifold.MDS(n_components=2).fit_transform(X)
         animals_mds[:,block+1,:] = mds[:len(animals)]
         professions_mds[:,block+1,:] = mds[len(animals):len(animals)+len(professions)]
         colors_mds[:,block+1,:] = mds[len(animals)+len(professions):]
 
-        tsne = sklearn.manifold.TSNE(n_components=2, perplexity=6).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+        tsne = sklearn.manifold.TSNE(n_components=2, perplexity=6).fit_transform(X)
         animals_tsne[:,block+1,:] = tsne[:len(animals)]
         professions_tsne[:,block+1,:] = tsne[len(animals):len(animals)+len(professions)]
         colors_tsne[:,block+1,:] = tsne[len(animals)+len(professions):]
 
-        umap_ = umap.UMAP(n_components=2, n_neighbors=6).fit_transform(numpy.array(animals_embeddings+professions_embeddings+colors_embeddings))
+        umap_ = umap.UMAP(n_components=2, n_neighbors=6).fit_transform(X)
         animals_umap[:,block+1,:] = umap_[:len(animals)]
         professions_umap[:,block+1,:] = umap_[len(animals):len(animals)+len(professions)]
         colors_umap[:,block+1,:] = umap_[len(animals)+len(professions):]

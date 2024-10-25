@@ -297,7 +297,7 @@ def write_spectral(vocab_size, family, parametrization, scale_type, ζ, context,
     eig = singular**2
     cumexpvar = eig.cumsum(dim=0)*100/eig.sum()
     
-    print("%2.2s %8.8s %20.20s %20.20s %8.8s" % (ζ, features.shape[1], "%.2f" % eig[-1], "%.2f" % eig[0], "%.2f%%" % cumexpvar[0]))
+    print("%2.2s %8.8s %20.20s %20.20s %10.10s" % (ζ, features.shape[1], "%.2f" % eig[-1], "%.2f" % eig[0], "%.2f%%" % cumexpvar[0]))
 
     for x, y in enumerate(cumexpvar):
         with open(spectral_path, "a") as file:
