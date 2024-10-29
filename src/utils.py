@@ -214,9 +214,9 @@ def cdf(samples, start=1, stop=1000, num=1000):
 
     return x, y
 
-def write_distribution(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, start, stop, num):    
-    distribution_path = "%s/%s%ddistribution.dat" % (out_path, arch, ζ)
-    with open(distribution_path, "w") as file:
+def write_featsdist(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, bins, density):    
+    featsdist_path = "%s/%s%dfeatsdist.dat" % (out_path, arch, ζ)
+    with open(featsdist_path, "w") as file:
         file.write("x y\n")
 
     model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
@@ -229,18 +229,19 @@ def write_distribution(vocab_size, family, parametrization, scale_type, ζ, cont
         embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
     
     # (batches*)context*d
-    features = embeddings[...,block,:,:].abs()
+    feats = embeddings[...,block,:,:].abs()
+    
+    print("📊 Calculating the histogram (%s, mean=%.2f, max=%.2f)" % (arch, feats.mean(), feats.max()))
+    feats = feats.log10()
+    hist, bin_edges = numpy.histogram(feats, bins=bins, range=(-1,5), density=density)
 
-    print("📈 Calculating CDF (%s, mean=%.2f)" % (arch, features.mean()))
-    xs, ys = cdf(features.flatten().tolist(), start, stop, num)
-
-    for x, y in zip(xs, ys):
-        with open(distribution_path, "a") as file:
+    for x, y in zip(bin_edges, hist):
+        with open(featsdist_path, "a") as file:
             file.write("%f %f\n" % (x, y))
 
-def write_outliers(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
-    outliers_path = "%s/%s%doutliers.dat" % (out_path, arch, ζ)
-    with open(outliers_path, "w") as file:
+def write_heat(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
+    heat_path = "%s/%s%dheat.dat" % (out_path, arch, ζ)
+    with open(heat_path, "w") as file:
         file.write("x y z\n")
 
     model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
@@ -253,32 +254,32 @@ def write_outliers(vocab_size, family, parametrization, scale_type, ζ, context,
         embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
     
     # context*d
-    features = embeddings[...,block,:,:].mean(dim=0)
+    feats = embeddings[...,block,:,:].mean(dim=0)
 
-    std1 = ((features.mean()-1*features.std()<features) & (features<features.mean()+1*features.std())).sum()*100/features.numel()
-    std2 = ((features.mean()-2*features.std()<features) & (features<features.mean()+2*features.std())).sum()*100/features.numel()
-    std3 = ((features.mean()-3*features.std()<features) & (features<features.mean()+3*features.std())).sum()*100/features.numel()
-    skew = scipy.stats.skew(features.flatten().tolist())
-    kurt = scipy.stats.kurtosis(features.flatten().tolist())
+    std1 = ((feats.mean()-1*feats.std()<feats) & (feats<feats.mean()+1*feats.std())).sum()*100/feats.numel()
+    std2 = ((feats.mean()-2*feats.std()<feats) & (feats<feats.mean()+2*feats.std())).sum()*100/feats.numel()
+    std3 = ((feats.mean()-3*feats.std()<feats) & (feats<feats.mean()+3*feats.std())).sum()*100/feats.numel()
+    skew = scipy.stats.skew(feats.flatten().tolist())
+    kurt = scipy.stats.kurtosis(feats.flatten().tolist())
     # See https://arxiv.org/abs/2405.19279
-    s = (features**2).mean(dim=0).sqrt()
+    s = (feats**2).mean(dim=0).sqrt()
     kurtrms = scipy.stats.kurtosis(s.tolist())
-    agg = features.abs().max(dim=1).values/features.abs().median(dim=1).values
+    agg = feats.abs().max(dim=1).values/feats.abs().median(dim=1).values
     mmr = agg.mean()
 
-    print("%2.2s %8.8s %8.8s %12.12s %8.8s %8.8s %10.10s %10.10s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s" % (ζ, features.shape[1], features.shape[0], arch, "%.2f" % features.mean(), "%.2f" % features.std(), "%.2f" % features.min(), "%.2f" % features.max(), "%.2f%%" % std1.item(), "%.2f%%" % std2.item(), "%.2f%%" % std3.item(), "%.2f" % skew, "%.2f" % kurt, "%.2f" % kurtrms, "%.2f" % mmr.item()))
+    print("%2.2s %8.8s %8.8s %12.12s %8.8s %8.8s %10.10s %10.10s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s" % (ζ, feats.shape[1], feats.shape[0], arch, "%.2f" % feats.mean(), "%.2f" % feats.std(), "%.2f" % feats.min(), "%.2f" % feats.max(), "%.2f%%" % std1.item(), "%.2f%%" % std2.item(), "%.2f%%" % std3.item(), "%.2f" % skew, "%.2f" % kurt, "%.2f" % kurtrms, "%.2f" % mmr.item()))
     
-    for feature in range(features.shape[1]):
-        for token in range(features.shape[0]):
-            with open(outliers_path, "a") as file:
-                file.write("%d %d %f\n" % (token, feature, features[token,feature]))
+    for feat in range(feats.shape[1]):
+        for token in range(feats.shape[0]):
+            with open(heat_path, "a") as file:
+                file.write("%d %d %f\n" % (token, feat, feats[token,feat]))
 
-        with open(outliers_path, "a") as file:
+        with open(heat_path, "a") as file:
             file.write("\n")
 
-def write_spectral(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
-    spectral_path = "%s/%s%dspectral.dat" % (out_path, arch, ζ)
-    with open(spectral_path, "w") as file:
+def write_cumexpvar(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
+    cumexpvar_path = "%s/%s%dcumexpvar.dat" % (out_path, arch, ζ)
+    with open(cumexpvar_path, "w") as file:
         file.write("x y\n")
 
     model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
@@ -291,14 +292,43 @@ def write_spectral(vocab_size, family, parametrization, scale_type, ζ, context,
         embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
     
     # context*d
-    features = embeddings[...,block,:,:].mean(dim=0)
+    feats = embeddings[...,block,:,:].mean(dim=0)
 
-    singular = torch.linalg.svdvals(features)
-    eig = singular**2
-    cumexpvar = eig.cumsum(dim=0)*100/eig.sum()
+    sings = torch.linalg.svdvals(feats)
+    eigs = sings**2
+    cumexpvar = eigs.cumsum(dim=0)*100/eigs.sum()
     
-    print("%2.2s %8.8s %20.20s %20.20s %10.10s" % (ζ, features.shape[1], "%.2f" % eig[-1], "%.2f" % eig[0], "%.2f%%" % cumexpvar[0]))
+    print("%2.2s %8.8s %10.10s" % (ζ, feats.shape[1], "%.2f%%" % cumexpvar[0]))
 
     for x, y in enumerate(cumexpvar):
-        with open(spectral_path, "a") as file:
+        with open(cumexpvar_path, "a") as file:
             file.write("%d %f\n" % (x, y.item()))
+
+def write_eigsdist(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, bins, density):    
+    eigsdist_path = "%s/%s%deigsdist.dat" % (out_path, arch, ζ)
+    with open(eigsdist_path, "w") as file:
+        file.write("x y\n")
+
+    model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
+    model_path = "%s/%s%d.pt" % (out_path, arch, ζ)
+    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model = model.to(device)
+
+    model.eval()
+    with torch.no_grad():
+        embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
+    
+    # context*d
+    feats = embeddings[...,block,:,:].mean(dim=0)
+
+    sings = torch.linalg.svdvals(feats)
+    eigs = sings**2
+    
+    print("📊 Calculating the histogram (%s, min=%.2f, max=%.2f)" % (arch, eigs[-1], eigs[0]))
+    eigs = eigs.log10()
+    hist, bin_edges = numpy.histogram(eigs, bins=bins, range=(1,10), density=density)
+
+    for x, y in zip(bin_edges, hist):
+        with open(eigsdist_path, "a") as file:
+            file.write("%f %f\n" % (x, y))
+

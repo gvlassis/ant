@@ -92,7 +92,7 @@ def tabular_dataset_to_tensors(dataset):
     X = dataset[:,:-1]
     Y = dataset[:,-1]
 
-    print("\x1b[36m%d\x1b[0m samples, %d features" % (X.shape[0], X.shape[1]))
+    print("\x1b[36m%d\x1b[0m samples, %d feats" % (X.shape[0], X.shape[1]))
 
     return X, Y
 

@@ -1,0 +1,58 @@
+\documentclass{article}
+    \pagestyle{empty}
+
+\usepackage[margin=1cm]{geometry}
+\usepackage{ragged2e}
+\usepackage{pgfplots}
+    \pgfplotsset{compat=newest}
+    \usepgfplotslibrary{groupplots}
+
+\begin{document}
+
+\begin{figure}
+\Centering
+\begin{tikzpicture}
+\begin{groupplot}[group style={rows=5, columns=3, horizontal sep=1cm, vertical sep=1.6cm},
+                  scale=0.6,
+                  ymin=0,
+                  ymax=100,
+                  enlargelimits=false]
+    \nextgroupplot[title={$\zeta=1$, sp}]
+    \addplot+[mark=none] table {../out/sp1cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=1$, mup}]
+    \addplot+[mark=none] table {../out/mup1cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=1$, mupthresh}]
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh1cumexpvar.dat};
+
+    \nextgroupplot[title={$\zeta=2$, sp}]
+    \addplot+[mark=none] table {../out/sp2cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=2$, mup}]
+    \addplot+[mark=none] table {../out/mup2cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=2$, mupthresh}]
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh2cumexpvar.dat};
+
+    \nextgroupplot[title={$\zeta=4$, sp}]
+    \addplot+[mark=none] table {../out/sp4cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=4$, mup}]
+    \addplot+[mark=none] table {../out/mup4cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=4$, mupthresh}]
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh4cumexpvar.dat};
+
+    \nextgroupplot[title={$\zeta=8$, sp}]
+    \addplot+[mark=none] table {../out/sp8cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=8$, mup}]
+    \addplot+[mark=none] table {../out/mup8cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=8$, mupthresh}]
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh8cumexpvar.dat};
+
+    \nextgroupplot[title={$\zeta=16$, sp}]
+    \addplot+[mark=none] table {../out/sp16cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=16$, mup}]
+    \addplot+[mark=none] table {../out/mup16cumexpvar.dat};
+    \nextgroupplot[title={$\zeta=16$, mupthresh}]
+    \addplot+[mark=none,color=green!70!black] table {../out/mupthresh16cumexpvar.dat};
+\end{groupplot}
+\end{tikzpicture}
+\end{figure}
+
+\end{document}
