@@ -2,11 +2,11 @@
     \pagestyle{empty}
 
 \usepackage[a3paper, landscape, margin=1cm]{geometry}
+\usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
     \usepgfplotslibrary{groupplots}
-    \pgfplotsset{colormap/cool}
 \usepackage{xstring}
 
 \begin{document}
@@ -55,7 +55,9 @@
                           xticklabels from table={\attentionpath}{token1},
                           yticklabels from table={\attentionpath}{token1},
                           nodes near coords,
-                          nodes near coords align=center]
+                          nodes near coords align=center,
+                          point meta min=0,
+                          point meta max=1]
             \pgfplotsforeachungrouped \groupelem in {0,...,\maxgroupelem}{
 
                 \pgfmathtruncatemacro{\groupelemindex}{\groupindex+\groupelem}

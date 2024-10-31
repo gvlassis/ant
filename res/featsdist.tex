@@ -2,11 +2,11 @@
     \pagestyle{empty}
 
 \usepackage[margin=1cm]{geometry}
+\usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
     \usepgfplotslibrary{groupplots}
-    \usepgfplotslibrary{statistics}
 
 \begin{document}
 
@@ -18,41 +18,56 @@
                   ybar interval,
                   enlargelimits=false,
                   ymin=0,
-                  ymax=1.1,
+                  ymax=1.2,
                   xtick={-1,0,1,2,3,4}]
     \nextgroupplot[title={$\zeta=1$, sp}]
+    \pgfplotsset{cycle list shift=0}
     \addplot table {../out/sp1featsdist.dat};
     \nextgroupplot[title={$\zeta=1$, mup}]
+    \pgfplotsset{cycle list shift=+1}
     \addplot table {../out/mup1featsdist.dat};
     \nextgroupplot[title={$\zeta=1$, mupthresh}]
+    \pgfplotsset{cycle list shift=+2}
     \addplot table {../out/mupthresh1featsdist.dat};
 
     \nextgroupplot[title={$\zeta=2$, sp}]
+    \pgfplotsset{cycle list shift=0}
     \addplot table {../out/sp2featsdist.dat};
     \nextgroupplot[title={$\zeta=2$, mup}]
+    \pgfplotsset{cycle list shift=+1}
     \addplot table {../out/mup2featsdist.dat};
     \nextgroupplot[title={$\zeta=2$, mupthresh}]
+    \pgfplotsset{cycle list shift=+2}
     \addplot table {../out/mupthresh2featsdist.dat};
 
     \nextgroupplot[title={$\zeta=4$, sp}]
+    \pgfplotsset{cycle list shift=0}
     \addplot table {../out/sp4featsdist.dat};
     \nextgroupplot[title={$\zeta=4$, mup}]
+    \pgfplotsset{cycle list shift=+1}
     \addplot table {../out/mup4featsdist.dat};
     \nextgroupplot[title={$\zeta=4$, mupthresh}]
+    \pgfplotsset{cycle list shift=+2}
     \addplot table {../out/mupthresh4featsdist.dat};
 
     \nextgroupplot[title={$\zeta=8$, sp}]
+    \pgfplotsset{cycle list shift=0}
     \addplot table {../out/sp8featsdist.dat};
     \nextgroupplot[title={$\zeta=8$, mup}]
+    \pgfplotsset{cycle list shift=+1}
     \addplot table {../out/mup8featsdist.dat};
     \nextgroupplot[title={$\zeta=8$, mupthresh}]
+    \pgfplotsset{cycle list shift=+2}
     \addplot table {../out/mupthresh8featsdist.dat};
 
     \nextgroupplot[title={$\zeta=16$, sp}]
+    \pgfplotsset{cycle list shift=0}
     \addplot table {../out/sp16featsdist.dat};
     \nextgroupplot[title={$\zeta=16$, mup}]
+    \pgfplotsset{cycle list shift=+1}
     \addplot table {../out/mup16featsdist.dat};
     \nextgroupplot[title={$\zeta=16$, mupthresh}]
+    \pgfplotsset{cycle list shift=+2}
     \addplot table {../out/mupthresh16featsdist.dat};
 \end{groupplot}
 \end{tikzpicture}

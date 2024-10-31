@@ -2,10 +2,10 @@
     \pagestyle{empty}
 
 \usepackage[landscape, margin=1cm]{geometry}
+\usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
-    \pgfplotsset{colormap/cool}
 
 \begin{document}
 
@@ -40,7 +40,9 @@
                  xticklabels from table={\similaritypath}{token1},
                  yticklabels from table={\similaritypath}{token1},
                  nodes near coords,
-                 nodes near coords align=center]
+                 nodes near coords align=center,
+                 point meta min=-1,
+                 point meta max=+1]
         \addplot[matrix plot, point meta=explicit] table [meta index=\elemindex] {\similaritypath};
     \end{axis}
     \end{tikzpicture}

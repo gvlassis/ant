@@ -1,6 +1,7 @@
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesPackage{utils}
 
+\RequirePackage{style}
 \RequirePackage{shellesc}
 \RequirePackage{catchfile}
 \RequirePackage{pgfplots}
@@ -47,11 +48,6 @@
     \StrCount{\zetas}{,}[\lenzetas]
     \pgfmathtruncatemacro{\lenzetas}{\lenzetas+1}
 
-    \pgfmathtruncatemacro{\colorstep}{1000/\lenzetas}
-    \pgfplotsset{
-        cycle list={[colors of colormap={0,\colorstep,...,1000}]}
-    }
-
     \begin{tikzpicture}
 
         \begin{groupplot}[group style={rows=4, columns=2, horizontal sep=1.2cm, vertical sep=1.8cm},
@@ -59,7 +55,8 @@
                           legend to name=leg:#2,
                           legend columns=-1,
                           xlabel=$#3$,
-                          xmode=log]
+                          xmode=log,
+                          cycle list={[samples of colormap={\lenzetas}]}]
             \plotparametrization{#1}{#2}{sp}{#3}
             \plotparametrization{#1}{#2}{ntk}{#3}
             \plotparametrization{#1}{#2}{mup}{#3}

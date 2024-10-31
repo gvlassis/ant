@@ -6,7 +6,7 @@
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
     \usepgfplotslibrary{groupplots}
-    \pgfplotsset{colormap/cool}
+    \usepgfplotslibrary{colorbrewer}
 \usepackage{xstring}
 
 \begin{document}
@@ -57,7 +57,8 @@
 
                 \edef\tmp{
                     \noexpand\nextgroupplot[title=\groupsubgroupname]
-                    \noexpand\addplot[only marks, scatter, point meta=explicit symbolic, scatter/classes*={animals={red},professions={green},colors={blue}}] table [x index=\subgroupelemzeroindex, y index=\subgroupelemoneindex, meta=class] {\clusteringpath};
+                    % Inside scatter/classes, fill does not work
+                    \noexpand\addplot[only marks, scatter, point meta=explicit symbolic, scatter/classes*={animals={Dark2-A,mark=*},professions={Dark2-B,mark=square*},colors={Dark2-C,mark=triangle*}}] table [x index=\subgroupelemzeroindex, y index=\subgroupelemoneindex, meta=class] {\clusteringpath};
                     \noexpand\legend{animals,professions,colors}
                 }\tmp
             }

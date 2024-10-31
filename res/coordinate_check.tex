@@ -2,6 +2,7 @@
     \pagestyle{empty}
 
 \usepackage{geometry}
+\usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
     \pgfplotsset{compat=newest}
@@ -23,12 +24,6 @@
 \pgfmathtruncatemacro{\subgroupelems}{3}
 \pgfmathtruncatemacro{\groupsubgroups}{\groupelems/\subgroupelems}
 
-\pgfmathtruncatemacro{\colorstep}{1000/(\groupsubgroups-1)}
-\pgfplotsset{
-    cycle multiindex* list={[colors of colormap={0,\colorstep,...,1000}] \nextlist mark=* \nextlist},
-    every axis plot/.append style={mark size=1.5pt}
-}
-
 \begin{figure}[h!]
 \Centering
 \begin{tikzpicture}
@@ -38,7 +33,13 @@
                       legend to name=leg:coordinatecheck,
                       legend columns=-1,
                       xlabel=$\zeta$,
-                      xmode=log]
+                      xmode=log,
+                      cycle multiindex* list={
+                          [samples of colormap={\groupsubgroups}]\nextlist
+                          mark=*\nextlist
+                          % PGFPlots default (See section 4.7.7 Cycle Lists)
+                          every mark/.append style={fill=.!80!black}\nextlist
+                      }]
 
         \pgfplotsforeachungrouped \elem in {0,...,\maxelem}{
             \pgfmathtruncatemacro{\group}{mod(div(\elem,\groupelems),\groups)}

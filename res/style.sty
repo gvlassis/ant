@@ -1,0 +1,25 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{style}
+
+\RequirePackage{pgfplots}
+    \usepgfplotslibrary{colorbrewer}
+    \pgfplotsset{
+        compat=newest,
+        cycle list/Dark2,
+        cycle multiindex* list={
+            Dark2\nextlist
+            mark=*\nextlist
+            % PGFPlots default (See section 4.7.7 Cycle Lists)
+            every mark/.append style={fill=.!80!black}\nextlist
+        },
+        % Set by xbar/ybar
+        bar cycle list/.style={
+            cycle multiindex* list={
+                Dark2\nextlist
+                % % PGFPlots default (See section 4.5.4 Bar Plots)
+                fill=.!30!white\nextlist
+            }
+        },
+        colormap={viridistrunc}{colors of colormap=(200,250,300,350,400,450,500,550,600,650,700,750,800,850,900 of viridis)},
+        every axis plot/.append style={thick, mark size=0.14em}
+    }

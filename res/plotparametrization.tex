@@ -1,6 +1,7 @@
 \documentclass{article}
     \pagestyle{empty}
 
+\usepackage{style}
 \usepackage{ragged2e}
 \RequirePackage{xstring}
 \RequirePackage{pgfplots}
@@ -20,10 +21,6 @@
 
 \StrCount{\zetas}{,}[\lenzetas]
 \pgfmathtruncatemacro{\lenzetas}{\lenzetas+1}
-\pgfmathtruncatemacro{\colorstep}{1000/\lenzetas}
-\pgfplotsset{
-    cycle list={[colors of colormap={0,\colorstep,...,1000}]}
-}
 
 \begin{tikzpicture}
 
@@ -32,7 +29,8 @@
                       legend to name=leg:\parametrization,
                       legend columns=-1,
                       xlabel=$\hyper$,
-                      xmode=log]
+                      xmode=log,
+                      cycle list={[samples of colormap={\lenzetas}]}]
         \plotparametrization{\dataset}{\family}{\parametrization}{\hyper}
     \end{groupplot}
 
@@ -40,7 +38,6 @@
 
 \end{tikzpicture}
 
-\caption{\dataset/\family/\parametrization}
 \end{figure}
 
 \end{document}
