@@ -210,58 +210,54 @@ def apply_pos(pos_type, emb, pos):
         
     return X
 
-def get_attention_header(transformer, blocks_interval):
+def get_attention_header(transformer):
     attention_header = ""
     
     for block in range(transformer.num_blocks):
-        if block % blocks_interval == 0:
-            for head in range(transformer.heads):
-                attention_header += f"block{block}.head{head} "
+        for head in range(transformer.heads):
+            attention_header += f"block{block}.head{head} "
 
     # Remove last space
     attention_header = attention_header[:-1]
 
     return attention_header
 
-def get_attention(W, blocks_interval):
+def get_attention(W):
     attention = ""
     
     for block in range(W.shape[0]):
-        if block % blocks_interval == 0:
-            for head in range(W.shape[1]):
-                # rows->y, columns->x
-                attention +=  "%.2f " % W[block, head]
+        for head in range(W.shape[1]):
+            # rows->y, columns->x
+            attention +=  "%.2f " % W[block, head]
 
     # Remove last space
     attention = attention[:-1]
 
     return attention
 
-def get_similarity_header(transformer, blocks_interval):
+def get_similarity_header(transformer):
     similarity_header = "embedding "
     
     for block in range(transformer.num_blocks):
-        if block % blocks_interval == 0:
-            similarity_header += f"block{block} "
+        similarity_header += f"block{block} "
 
     # Remove last space
     similarity_header = similarity_header[:-1]
 
     return similarity_header
 
-def get_similarity(embeddings_x, embeddings_y, blocks_interval):
-    similarity = "%.2f " % torch.nn.functional.cosine_similarity(embeddings_x[0,:], embeddings_y[0,:], dim=0)
-    
-    for block in range(embeddings_x.shape[0]-1):
-        if block % blocks_interval == 0:
-            similarity +=  "%.2f " % torch.nn.functional.cosine_similarity(embeddings_x[block+1,:], embeddings_y[block+1,:], dim=0)
+def get_similarity(embeddings_x, embeddings_y):
+    similarity = ""
+
+    for block in range(embeddings_x.shape[0]):
+        similarity +=  "%.2f " % torch.nn.functional.cosine_similarity(embeddings_x[block,:], embeddings_y[block,:], dim=0)
 
     # Remove last space
     similarity = similarity[:-1]
 
     return similarity
 
-def get_clustering_header(transformer, blocks_interval):
+def get_clustering_header(transformer):
     clustering_header = "embedding.random.x embedding.random.y "\
                         "embedding.pca.x embedding.pca.y "\
                         "embedding.mds.x embedding.mds.y "\
@@ -269,24 +265,22 @@ def get_clustering_header(transformer, blocks_interval):
                         "embedding.umap.x embedding.umap.y "
 
     for block in range(transformer.num_blocks):
-        if block % blocks_interval == 0:
-            clustering_header += f"block{block}.random.x block{block}.random.y "\
-                                 f"block{block}.pca.x block{block}.pca.y "\
-                                 f"block{block}.mds.x block{block}.mds.y "\
-                                 f"block{block}.tsne.x block{block}.tsne.y "\
-                                 f"block{block}.umap.x block{block}.umap.y "
+        clustering_header += f"block{block}.random.x block{block}.random.y "\
+                             f"block{block}.pca.x block{block}.pca.y "\
+                             f"block{block}.mds.x block{block}.mds.y "\
+                             f"block{block}.tsne.x block{block}.tsne.y "\
+                             f"block{block}.umap.x block{block}.umap.y "
 
     # Remove last space
     clustering_header = clustering_header[:-1]
 
     return clustering_header
 
-def get_clustering(random, pca, mds, tsne, umap, blocks_interval):
-    clustering = "%f %f %f %f %f %f %f %f %f %f " % (random[0,0], random[0,1], pca[0,0], pca[0,1], mds[0,0], mds[0,1], tsne[0,0], tsne[0,1], umap[0,0], umap[0,1])
-    
-    for block in range(random.shape[0]-1):
-        if block % blocks_interval == 0:
-            clustering += "%f %f %f %f %f %f %f %f %f %f " % (random[block+1,0], random[block+1,1], pca[block+1,0], pca[block+1,1], mds[block+1,0], mds[block+1,1], tsne[block+1,0], tsne[block+1,1], umap[block+1,0], umap[block+1,1])
+def get_clustering(random, pca, mds, tsne, umap):
+    clustering = ""
+
+    for block in range(random.shape[0]):
+        clustering += "%f %f %f %f %f %f %f %f %f %f " % (random[block,0], random[block,1], pca[block,0], pca[block,1], mds[block,0], mds[block,1], tsne[block,0], tsne[block,1], umap[block,0], umap[block,1])
 
     # Remove last space
     clustering = clustering[:-1]

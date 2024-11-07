@@ -7,6 +7,7 @@ import copy
 import plotext
 import numpy
 import scipy
+import sklearn.metrics
 import models.utils_models
 import data.utils_data
 import warnings
@@ -200,19 +201,40 @@ def print_schedule(train_batches, scheduler):
     plotext.show()
     plotext.clear_figure()
 
-def cdf(samples, start=1, stop=1000, num=1000):
-    kde = scipy.stats.gaussian_kde(samples)
+def inter(X, Y, balanced=False):
+    sim = 0
 
-    x = numpy.linspace(start=start, stop=stop, num=num)
+    classes = numpy.unique(Y)
+    pairs = 0
+    for cls in classes:
+        X_intra = X[Y == cls]
+        X_inter = X[Y != cls]
 
-    # PDF
-    y_ = kde.evaluate(x)
+        dists = sklearn.metrics.pairwise_distances(X_intra, X_inter, metric="cosine")
+        sims = 1 - dists
+        pairs_intra = sims.size
+        pairs += pairs_intra
 
-    # CDF
-    y = numpy.cumsum(y_)
-    y /= y[-1]
+        sim += sims.mean() if balanced else sims.sum()
 
-    return x, y
+    return sim/len(classes) if balanced else sim/pairs
+
+def intra(X, Y, balanced):
+    sim = 0
+
+    classes = numpy.unique(Y)
+    pairs = 0
+    for cls in classes:
+        X_intra = X[Y == cls]
+
+        dists = sklearn.metrics.pairwise_distances(X_intra, metric="cosine")
+        sims = 1 - dists
+        pairs_intra = (X_intra.shape[0]-1)*X_intra.shape[0] / 2
+        pairs += pairs_intra
+
+        sim += numpy.triu(sims, k=1).sum()/pairs_intra if balanced else numpy.triu(sims, k=1).sum()
+
+    return sim/len(classes) if balanced else sim/pairs
 
 def write_featsdist(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, bins, density):    
     featsdist_path = "%s/%s%dfeatsdist.dat" % (out_path, arch, ζ)

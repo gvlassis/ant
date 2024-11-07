@@ -16,8 +16,6 @@ parser.add_argument("--context", type=int, default=1024)
 
 parser.add_argument("--string", help="The string to be visualized", default="Alice is a nurse. She works in a hospital.")
 parser.add_argument("--tokenizer", help="Hugging Face repository of the tokenizer to be used", type=lambda x: transformers.PreTrainedTokenizerFast.from_pretrained(x).backend_tokenizer, default="gpt2")
-
-parser.add_argument("--blocks_interval", help="Every how many transformer blocks to check", type=int, default=1)
 args=parser.parse_args()
 
 attention_path = args.PATH.split(".")[0]+"_attention.dat"
@@ -38,7 +36,7 @@ model.eval()
 with torch.no_grad():
     W = model.W( X.to(device) )
 
-attention_header = models.transformer.get_attention_header(model, args.blocks_interval)
+attention_header = models.transformer.get_attention_header(model)
 with open(attention_path,"w") as file:
     file.write(f"x y token1 token2 {attention_header}\n")
 
@@ -48,7 +46,7 @@ for y, token2 in enumerate(ids):
     
     for x, token1 in enumerate(ids):
         # rows->y, columns->x
-        attention = models.transformer.get_attention(W[..., y, x], args.blocks_interval)
+        attention = models.transformer.get_attention(W[..., y, x])
         with open(attention_path,"a") as file:
             file.write("%d %d %s %s %s\n" % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2), attention))
     
