@@ -85,20 +85,20 @@ with open(similarity_path,"w") as file:
     file.write(f"x y token1 token2 {similarity_header}\n")
 
 # How similar token1 (x in matrix plot) is to token2 (y in matrix plot)
-x=0
+y=0
 for j, token2 in enumerate(ids):
     if j not in animals_indices+professions_indices+colors_indices:
         continue
 
-    y=0
+    x=0
     for i, token1 in enumerate(ids):
         if i not in animals_indices+professions_indices+colors_indices:
             continue
         similarity = models.transformer.get_similarity(embeddings[:, i, :], embeddings[:, j, :])
         with open(similarity_path,"a") as file:
             file.write("%d %d %s %s %s\n" % (x, y, args.tokenizer.id_to_token(token1), args.tokenizer.id_to_token(token2), similarity))
-        y+=1
+        x+=1
         
     with open(similarity_path,"a") as file:
             file.write("\n")
-    x+=1
+    y+=1
