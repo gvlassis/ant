@@ -2,6 +2,7 @@
 **/**.aux
 **/**.log
 **/**.pdf
+**/**.dat
 out
 california_housing
 cifar10

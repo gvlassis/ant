@@ -19,6 +19,7 @@ parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", t
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
 parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=False)
 parser.add_argument("--warning", type=utils.str_to_bool, default=True)
+parser.add_argument("--verbose", help="If True, print a pretty log in the stdout. If False, only print the final min_val_loss. Useful for piping.", type=utils.str_to_bool, default=True)
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
 parser.add_argument("--vocab_size", type=int, default=50304)
@@ -107,11 +108,11 @@ if args.dataset_device_type == "cpu":
 elif args.dataset_device_type == "cuda":
     dataset_device = model_device
 
-if master: print("💾 Loading dataset")
+if master and args.verbose: print("💾 Loading dataset")
 train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_device, args.micro_batch_size, args.context)
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
-if master: print("🧠 Initializing model")
+if master and args.verbose: print("🧠 Initializing model")
 model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.scale_type, args.ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master)
 model = model.to(model_device)
 if args.info:
@@ -134,7 +135,7 @@ if torchelastic: model = torch.nn.parallel.DistributedDataParallel(model)
 
 # Compile after DDP
 if args.compile:
-    if master: print("⏳ Compiling")
+    if master and args.verbose: print("⏳ Compiling")
     # mode=max-autotune gives NaN
     get_loss = torch.compile(data.utils_data.get_loss)
 else:
@@ -144,7 +145,7 @@ scheduler = utils.get_scheduler(args.scheduler, optimizer, args.train_batches)
 if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
 
 if master:
-    print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
+    if args.verbose: print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
     with open(log_path,"w") as file:
         file.write(f"train_batch lr0 train_loss val_loss train_time {train_stats_header}\n")
 
@@ -206,7 +207,7 @@ for train_batch in range(args.train_batches):
 
         train_stats = models.utils_models.get_train_stats(model)
 
-        print("%s %s %s %s %s" % (train_batch_decorated, lr0_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
+        if args.verbose: print("%s %s %s %s %s" % (train_batch_decorated, lr0_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
         with open(log_path,"a") as file:
             file.write("%d %f %f %f %d %s\n" % (train_batch, scheduler.get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
 
@@ -217,6 +218,8 @@ for train_batch in range(args.train_batches):
     optimizer.zero_grad()
     scaler.update()
     scheduler.step()
+
+if master and (not args.verbose): print("%f" % min_val_loss, end="")
 
 if torchelastic: torch.distributed.destroy_process_group()
 exit(0)
