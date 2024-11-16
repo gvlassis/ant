@@ -68,17 +68,29 @@ with torch.no_grad():
     embeddings = model.get_embeddings( X.to(device) )
 
 print("\x1b[1m%6.6s %6.6s %6.6s %6.6s %6.6s\x1b[0m" % ("block", "intra", "inter", "ratio", "sil"))
+intras = []
+inters = []
+ratios = []
+sils = []
 for block in range(model.num_blocks+1):
     animals_embeddings = [embeddings[block,animal_index,:] for animal_index in animals_indices]
     professions_embeddings = [embeddings[block,profession_index,:] for profession_index in professions_indices]
     colors_embeddings = [embeddings[block,color_index,:] for color_index in colors_indices]
     X = numpy.array(animals_embeddings+professions_embeddings+colors_embeddings)
     Y = [0]*len(animals) + [1]*len(professions) + [2]*len(colors)
+
     intra = utils.intra(X,Y,args.balanced)
     inter = utils.inter(X,Y,args.balanced)
     ratio = inter/intra
     sil = sklearn.metrics.silhouette_score(X, Y, metric="cosine")
+    
+    intras.append(intra)
+    inters.append(inter)
+    ratios.append(ratio)
+    sils.append(sil)
     print("%6.6s %6.6s %6.6s %6.6s %6.6s" % (block, "%.2f" % intra, "%.2f" % inter, "%.2f" % ratio, "%.2f" % sil))
+print("━"*35)
+print("%6.6s %6.6s %6.6s %6.6s %6.6s" % ("mean", "%.2f" % numpy.mean(intras), "%.2f" % numpy.mean(inters), "%.2f" % numpy.mean(ratios), "%.2f" % numpy.mean(sils)))
 
 similarity_header = models.transformer.get_similarity_header(model)
 with open(similarity_path,"w") as file:
