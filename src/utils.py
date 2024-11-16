@@ -201,6 +201,68 @@ def print_schedule(train_batches, scheduler):
     plotext.show()
     plotext.clear_figure()
 
+# (...*)rows*cols
+def entropy(X, normalized=True, eps=1e-9):
+    rows = X.shape[-2]
+
+    # (...*)rows
+    entropies = -torch.sum(X*torch.log(X+eps), dim=-1)
+
+    maximums = torch.arange(1, rows+1).log()
+    if normalized:
+        denominators = maximums
+        # Prevents 0/0
+        denominators[...,0] = 1 
+    else:
+        denominators = 1
+
+    return (entropies/denominators).mean()
+
+# (...*)rows*cols
+def l2(X):
+    rows = X.shape[-2]
+
+    # (...*)rows
+    l2s = X.norm(dim=-1)
+
+    return l2s.mean()
+
+# (...*)rows*cols
+def invsimp(X, normalized=True):
+    rows = X.shape[-2]
+
+    # (...*)rows
+    invsimps = 1/torch.sum(X**2, dim=-1)
+
+    maximums = torch.arange(1, rows+1)
+    denominators = maximums if normalized else 1
+
+    return (invsimps/denominators).mean()
+
+# (...*)rows*cols
+def invsimp(X, normalized=True):
+    rows = X.shape[-2]
+
+    # (...*)rows
+    invsimps = 1/torch.sum(X**2, dim=-1)
+
+    maximums = torch.arange(1, rows+1)
+    denominators = maximums if normalized else 1
+
+    return (invsimps/denominators).mean()
+
+# (...*)rows*cols
+def thresh(X, thresh, normalized=True):
+    rows = X.shape[-2]
+
+    # (...*)rows
+    threshs = torch.sum(X>thresh, dim=-1)
+
+    maximums = torch.arange(1, rows+1)
+    denominators = maximums if normalized else 1
+
+    return (threshs/denominators).mean()
+
 def inter(X, Y, balanced=False):
     sim = 0
 

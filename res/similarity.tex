@@ -1,7 +1,7 @@
 \documentclass{article}
     \pagestyle{empty}
 
-\usepackage[a3paper, landscape, margin=1cm]{geometry}
+\usepackage[a4paper]{geometry}
 \usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
@@ -15,7 +15,7 @@
 \pgfmathtruncatemacro{\maxelemindex}{\pgfplotsretval-1}
 \def\offset{4}
 
-\foreach \elemindex in {\offset,...,\maxelemindex}{
+\foreach \elemindex in {\offset,...,4}{
 
     \clearpage
     
@@ -28,19 +28,25 @@
     \begin{figure}[h!]
     \Centering
     \begin{tikzpicture}
-    \begin{axis}[scale=4,
-                 tick label style={font=\scriptsize},
-                 xticklabel style={rotate=45, anchor=north east, inner sep=0cm},
+    \begin{axis}[scale=2,
+                 % tick label style={font=\scriptsize},
+                 % xticklabel style={rotate=45, anchor=north east, inner sep=0cm},
+                 % node near coord style={font=\tiny,/pgf/number format/fixed,/pgf/number format/precision=2},
                  enlargelimits=false,
                  axis line style={draw=none},
                  tick style={draw=none},
                  colorbar horizontal,
                  colorbar style={anchor=outer south,
-                                 at={(0.5,1)}},
-                 xtick=data,
-                 ytick=data, 
-                 xticklabels from table={\similaritypath}{token1},
-                 yticklabels from table={\similaritypath}{token1},
+                                 at={(0.5,1)},
+                                 width=0.25*\textwidth},
+                 % xtick=data,
+                 xtick=\empty,
+                 % ytick=data,
+                 ytick=\empty,
+                 % xticklabels from table={\similaritypath}{token1},
+                 % yticklabels from table={\similaritypath}{token1},
+                 % nodes near coords,
+                 % nodes near coords align=center,
                  point meta min=-1,
                  point meta max=+1]
         \addplot[matrix plot, point meta=explicit] table [meta index=\elemindex] {\similaritypath};

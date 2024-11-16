@@ -1,7 +1,7 @@
 \documentclass{article}
     \pagestyle{empty}
 
-\usepackage[a2paper, landscape, margin=1cm]{geometry}
+\usepackage[a4paper]{geometry}
 \usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
@@ -15,21 +15,23 @@
 \begin{figure}
 \Centering
 \begin{tikzpicture}
-\begin{axis}[width=50cm,
-             height=(\d/\context)*50cm,
+\begin{axis}[scale=2,
+             % width=50cm,
+             % height=(\d/\context)*50cm,
              xtick={0,\maxtoken},
              ytick={0,\maxfeature},
-             enlargelimits=false,
              xlabel=features,
              ylabel=tokens,
-             label style={font=\Huge},
-             tick label style={font=\Huge},
+             % label style={font=\Huge},
+             % tick label style={font=\Huge},
+             enlargelimits=false,
              colorbar horizontal,
              colorbar style={anchor=outer south,
                              at={(0.5,1)},
                              xtick={\pgfkeysvalueof{/pgfplots/xmin}, 0, \pgfkeysvalueof{/pgfplots/xmax}},
                              scaled ticks=false,
-                             point meta/.style={/pgf/number format/fixed, /pgf/number format/precision=2}}]
+                             point meta/.style={/pgf/number format/fixed, /pgf/number format/precision=2},
+                             width=0.25*\textwidth}]
     \addplot[matrix plot, point meta=explicit] table [meta=z] {\heatpath};
 \end{axis}
 \end{tikzpicture}

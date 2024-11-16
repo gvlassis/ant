@@ -1,7 +1,7 @@
 \documentclass{article}
     \pagestyle{empty}
 
-\usepackage[a3paper, landscape, margin=1cm]{geometry}
+\usepackage[a4paper, landscape]{geometry}
 \usepackage{style}
 \usepackage{ragged2e}
 \usepackage{pgfplots}
@@ -39,23 +39,25 @@
     \Centering
     \begin{tikzpicture}
         
-        \begin{groupplot}[group style={rows=4, columns=4, horizontal sep=2.2cm, vertical sep=2.0cm},
-                          scale=1.1,
-                          tick label style={font=\scriptsize},
-                          xticklabel style={rotate=45, anchor=north east, inner sep=0cm},
-                          node near coord style={font=\tiny,/pgf/number format/fixed,/pgf/number format/precision=2},
+        \begin{groupplot}[group style={rows=4, columns=4},
+                          scale=0.55,
+                          % tick label style={font=\scriptsize},
+                          % xticklabel style={rotate=45, anchor=north east, inner sep=0cm},
+                          % node near coord style={font=\tiny,/pgf/number format/fixed,/pgf/number format/precision=2},
                           colorbar horizontal,
-                          colorbar style={width=6cm},
+                          colorbar style={width=0.25*\textwidth},
                           colorbar to name=col:attention,
                           enlargelimits=false,
                           axis line style={draw=none},
                           tick style={draw=none},
-                          xtick=data,
-                          ytick=data,
-                          xticklabels from table={\attentionpath}{token1},
-                          yticklabels from table={\attentionpath}{token1},
-                          nodes near coords,
-                          nodes near coords align=center,
+                          xtick=\empty,
+                          % xtick=data,
+                          ytick=\empty,
+                          % ytick=data,
+                          % xticklabels from table={\attentionpath}{token1},
+                          % yticklabels from table={\attentionpath}{token1},
+                          % nodes near coords,
+                          % nodes near coords align=center,
                           point meta min=0,
                           point meta max=1]
             \pgfplotsforeachungrouped \groupelem in {0,...,\maxgroupelem}{
