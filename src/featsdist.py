@@ -25,12 +25,12 @@ print("💾 Loading dataset")
 iterator = data.utils_data.get_iterator(args.dataset, "train", "cpu", args.batch_size, args.context)
 batch_X, _ = next(iterator)
 
-print("🧠 Initializing models")
-for ζ in [1,2,4,8,16]:
-    print(f"\x1b[1mζ={ζ}\x1b[0m")
-    
+print("\x1b[1m%2.2s %12.12s %8.8s %8.8s %10.10s\x1b[0m" % ("ζ", "arch", "mean", "std", "max"))
+for ζ in [1,2,4,8,16]:    
     utils.write_featsdist(args.vocab_size, args.family, "sp", args.scale_type, ζ, args.context, "sp", device, args.dataset, batch_X, args.block, args.bins, args.density)
 
     utils.write_featsdist(args.vocab_size, args.family, "mup", args.scale_type, ζ, args.context, "mup", device, args.dataset, batch_X, args.block, args.bins, args.density)
 
     utils.write_featsdist(args.vocab_size, args.family, "mup", args.scale_type, ζ, args.context, "mupthresh", device, args.dataset, batch_X, args.block, args.bins, args.density)
+
+    print("━"*45)

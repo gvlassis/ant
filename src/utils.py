@@ -315,7 +315,8 @@ def write_featsdist(vocab_size, family, parametrization, scale_type, ζ, context
     # (batches*)context*d
     feats = embeddings[...,block,:,:].abs()
     
-    print("📊 Calculating the histogram (%s, mean=%.2f, max=%.2f)" % (arch, feats.mean(), feats.max()))
+    print("%2.2s %12.12s %8.8s %8.8s %10.10s" % (ζ, arch, "%.2f" % feats.mean(), "%.2f" % feats.std(), "%.2f" % feats.max()))
+
     feats = feats.log10()
     hist, bin_edges = numpy.histogram(feats, bins=bins, range=(-1,5), density=density)
 
@@ -351,7 +352,7 @@ def write_heat(vocab_size, family, parametrization, scale_type, ζ, context, arc
     agg = feats.abs().max(dim=1).values/feats.abs().median(dim=1).values
     mmr = agg.mean()
 
-    print("%2.2s %8.8s %8.8s %12.12s %8.8s %8.8s %10.10s %10.10s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s" % (ζ, feats.shape[1], feats.shape[0], arch, "%.2f" % feats.mean(), "%.2f" % feats.std(), "%.2f" % feats.min(), "%.2f" % feats.max(), "%.2f%%" % std1.item(), "%.2f%%" % std2.item(), "%.2f%%" % std3.item(), "%.2f" % skew, "%.2f" % kurt, "%.2f" % kurtrms, "%.2f" % mmr.item()))
+    print("%2.2s %8.8s %8.8s %12.12s %8.8s %8.8s %10.10s %10.10s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s" % (ζ, feats.shape[1], feats.shape[0], arch, "%.2f" % feats.mean(), "%.2f" % feats.std(), "%.2f" % feats.min(), "%.2f" % feats.max(), "%.2f%%" % std1, "%.2f%%" % std2, "%.2f%%" % std3, "%.2f" % skew, "%.2f" % kurt, "%.2f" % kurtrms, "%.2f" % mmr))
     
     for feat in range(feats.shape[1]):
         for token in range(feats.shape[0]):
@@ -382,7 +383,7 @@ def write_cumexpvar(vocab_size, family, parametrization, scale_type, ζ, context
     eigs = sings**2
     cumexpvar = eigs.cumsum(dim=0)*100/eigs.sum()
     
-    print("%2.2s %8.8s %10.10s" % (ζ, feats.shape[1], "%.2f%%" % cumexpvar[0]))
+    print("%2.2s %8.8s %12.12s %12.12s" % (ζ, feats.shape[1], arch, "%.2f%%" % cumexpvar[0]))
 
     for x, y in enumerate(cumexpvar):
         with open(cumexpvar_path, "a") as file:
@@ -408,7 +409,8 @@ def write_eigsdist(vocab_size, family, parametrization, scale_type, ζ, context,
     sings = torch.linalg.svdvals(feats)
     eigs = sings**2
     
-    print("📊 Calculating the histogram (%s, min=%.2f, max=%.2f)" % (arch, eigs[-1], eigs[0]))
+    print("%2.2s %12.12s %14.14s %14.14s %16.16s %16.16s" % (ζ, arch, "%.2f" % eigs.mean(), "%.2f" % eigs.std(), "%.2f" % eigs[-1], "%.2f" % eigs[0]))
+    
     eigs = eigs.log10()
     hist, bin_edges = numpy.histogram(eigs, bins=bins, range=(1,10), density=density)
 
