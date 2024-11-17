@@ -383,7 +383,7 @@ def write_cumexpvar(vocab_size, family, parametrization, scale_type, ζ, context
     eigs = sings**2
     cumexpvar = eigs.cumsum(dim=0)*100/eigs.sum()
     
-    print("%2.2s %8.8s %12.12s %12.12s %12.12s %12.12s %12.12s %12.12s %12.12s" % (ζ, feats.shape[1], arch, "%.2f%%" % cumexpvar[0], "%.2f%%" % cumexpvar[1], "%.2f%%" % cumexpvar[3], "%.2f%%" % cumexpvar[7], "%.2f%%" % cumexpvar[15], "%.2f%%" % cumexpvar[31]))
+    print("%2.2s %8.8s %12.12s %12.12s %12.12s %12.12s" % (ζ, feats.shape[1], arch, "%.2f%%" % cumexpvar[0], "%.2f%%" % cumexpvar[4], "%.2f%%" % cumexpvar[9]))
 
     for x, y in enumerate(cumexpvar):
         with open(cumexpvar_path, "a") as file:
