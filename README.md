@@ -1,4 +1,3 @@
-# ant
 <picture>
   <source srcset="./res/dynamic_dark.webp" media="(prefers-color-scheme: dark)">
   <img src="./res/dynamic_light.webp" alt="ant's friendly logo" width=400>
