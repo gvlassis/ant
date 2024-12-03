@@ -75,14 +75,15 @@ def get_train_stats_header(model):
 
     return train_stats_header
 
-def get_stats(tensor):
+def get_stats_abs(tensor):
     mean = tensor.mean().item()
 
     # https://github.com/pytorch/pytorch/issues/29372
     std = 0 if tensor.numel()==1 else tensor.std().item()
 
     top = mean+std
-    bot = mean-std
+    # Absolute value cannot be negative
+    bot = max(mean-std,0)
     _max = tensor.max().item()
 
     return mean, top, bot, _max
@@ -91,9 +92,9 @@ def get_train_stats(model):
     train_stats = ""
 
     for parameter in model.parameters():
-        grad_mean, grad_top, grad_bot, grad_max = get_stats(parameter.grad.abs())
+        grad_mean, grad_top, grad_bot, grad_max = get_stats_abs(parameter.grad.abs())
         
-        data_mean, data_top, data_bot, data_max = get_stats(parameter.data.abs())
+        data_mean, data_top, data_bot, data_max = get_stats_abs(parameter.data.abs())
 
         train_stats += f"{grad_mean} {grad_top} {grad_bot} {grad_max} {data_mean} {data_top} {data_bot} {data_max} "
     

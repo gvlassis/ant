@@ -76,14 +76,15 @@ for arch in archs:
         min_train_loss_mean = numpy.mean(min_train_losses)
         min_train_loss_std = numpy.std(min_train_losses)
         min_train_loss_top = min_train_loss_mean+min_train_loss_std
-        min_train_loss_bot = min_train_loss_mean-min_train_loss_std
-        min_train_loss_min = numpy.min(min_train_losses)
-        
+        # Loss cannot be negative
+        min_train_loss_bot = max(min_train_loss_mean-min_train_loss_std,0)
+
         min_val_loss_min = numpy.min(min_val_losses)
         min_val_loss_mean = numpy.mean(min_val_losses)
         min_val_loss_std = numpy.std(min_val_losses)
         min_val_loss_top = min_val_loss_mean+min_val_loss_std
-        min_val_loss_bot = min_val_loss_mean-min_val_loss_std
+        # Loss cannot be negative
+        min_val_loss_bot = max(min_val_loss_mean-min_val_loss_std,0)
         
         hyper_decorated = "%8.8s" % ("%f" % hyper)
         # min_train_loss_min
