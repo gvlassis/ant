@@ -13,7 +13,7 @@ root_path = os.path.dirname(src_path)
 
 DATASETS_TABULAR = ["california_housing"]
 DATASETS_IMAGE = ["mnist", "cifar10"]
-DATASETS_TEXT = ["shakespearefirstfolio", "minipile", "openwebtext", "finewebedu", "ancient_greek_theatre", "culturay_el"]
+DATASETS_TEXT = ["shakespearefirstfolio", "wikitext", "minipile", "openwebtext", "finewebedu", "ancient_greek_theatre", "culturay_el"]
 DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
 
 def get_splits(dataset):
@@ -37,6 +37,10 @@ def get_splits(dataset):
         train_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="train", trust_remote_code=True)
         val_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="validation", trust_remote_code=True)
         test_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="test", trust_remote_code=True)
+    elif dataset=="wikitext":
+        train_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="train", trust_remote_code=True)
+        val_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="validation", trust_remote_code=True)
+        test_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="test", trust_remote_code=True)
     elif dataset=="minipile":
         train_dataset = datasets.load_dataset("JeanKaddour/minipile", split="train", trust_remote_code=True)
         val_dataset = datasets.load_dataset("JeanKaddour/minipile", split="validation", trust_remote_code=True)
