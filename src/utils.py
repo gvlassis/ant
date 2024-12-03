@@ -19,6 +19,7 @@ root_path = os.path.dirname(src_path)
 out_path = root_path + "/out"
 
 SCHEDULERS = ["trapezoidal", "1cycle", "cos", "constant"]
+INF = 10**15
 
 def get_files(root):
     root = os.path.abspath(root)

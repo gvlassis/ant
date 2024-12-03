@@ -6,7 +6,7 @@ from . import vit
 from . import transformer
 from . import parametrizations
 
-FAMILIES=["mlp", "vgg", "vit", "transformer"]
+FAMILIES=["mlp", "mlp_image", "vgg", "vit", "transformer"]
 
 def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
@@ -15,6 +15,11 @@ def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_i
         model0 = mlp.MLP3L(8, 16, 16, 1)
         model = mlp.MLP3L(8, 16*ζ, 16*ζ, 1)
         model_ = mlp.MLP3L(8, 16*2, 16*2, 1)
+
+    elif family=="mlp_image":
+        model0 = mlp.MLP3L_image(d1=16, d2=16)
+        model = mlp.MLP3L_image(d1=16*ζ, d2=16*ζ)
+        model_ = mlp.MLP3L_image(d1=16*2, d2=16*2)
 
     elif family=="vgg":
         model0 = vgg.VGG(out_channels0=4)

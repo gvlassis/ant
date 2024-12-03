@@ -4,6 +4,7 @@ datasets.logging.set_verbosity_error()
 import torch
 import torchvision.transforms.v2
 import sys
+from math import sqrt
 
 script_path = os.path.abspath(__file__)
 data_path = os.path.dirname(script_path)
@@ -11,7 +12,7 @@ src_path = os.path.dirname(data_path)
 root_path = os.path.dirname(src_path)
 
 DATASETS_TABULAR = ["california_housing"]
-DATASETS_IMAGE = ["cifar10"]
+DATASETS_IMAGE = ["mnist", "cifar10"]
 DATASETS_TEXT = ["shakespearefirstfolio", "minipile", "openwebtext", "finewebedu", "ancient_greek_theatre", "culturay_el"]
 DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
 
@@ -20,6 +21,12 @@ def get_splits(dataset):
         train_dataset = datasets.load_dataset("gvlassis/california_housing", split="train", trust_remote_code=True)
         val_dataset = datasets.load_dataset("gvlassis/california_housing", split="validation", trust_remote_code=True)
         test_dataset = datasets.load_dataset("gvlassis/california_housing", split="test", trust_remote_code=True)
+    elif dataset=="mnist":
+        mnist_train_dataset = datasets.load_dataset("ylecun/mnist", split="train", trust_remote_code=True)
+        mnist_train_dataset = mnist_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
+        train_dataset = mnist_train_dataset["train"]
+        val_dataset = mnist_train_dataset["test"]
+        test_dataset = datasets.load_dataset("ylecun/mnist", split="test", trust_remote_code=True)
     elif dataset=="cifar10":
         cifar10_train_dataset = datasets.load_dataset("uoft-cs/cifar10", split="train", trust_remote_code=True)
         cifar10_train_dataset = cifar10_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
@@ -118,8 +125,11 @@ class ImageDataset(torch.utils.data.Dataset):
 
 def image_dataset_to_tensors(dataset):
     cores = os.cpu_count()
+    
+    # Unpacking set to single element
+    name, = set(["img", "image"]) & set(dataset.column_names)
 
-    X_dataset = dataset.map(lambda sample: {"tensor": torchvision.transforms.v2.functional.pil_to_tensor(sample["img"])}, remove_columns=["label"], num_proc=cores)
+    X_dataset = dataset.map(lambda sample: {"tensor": torchvision.transforms.v2.functional.pil_to_tensor(sample[name])}, remove_columns=["label"], num_proc=cores)
     X = torch.tensor(X_dataset["tensor"], dtype=torch.uint8)
     Y = torch.tensor(dataset["label"])
 
@@ -168,7 +178,7 @@ def text_dataset_to_tensor(dataset, tokenizer, eot_id):
 def dataset_to_tensors(dataset, tokenizer=None, eot_id=None):
 
     # Auto-detection
-    if "img" in dataset.column_names:
+    if set(["img", "image"]) & set(dataset.column_names):
         tensors = image_dataset_to_tensors(dataset)
     elif "text" in dataset.column_names:
         tensors = (text_dataset_to_tensor(dataset, tokenizer, eot_id), None)
@@ -212,7 +222,7 @@ def get_loss(dataset, model, batch_X, batch_Y, label_smoothing=0):
 
     if dataset in DATASETS_TABULAR:
         loss = torch.nn.functional.mse_loss(
-            batch_Y_[...,0],
+            batch_Y_.flatten(),
             batch_Y.to(torch.float32)
         )
 
@@ -245,3 +255,129 @@ def approximate_loss(batches, iterator, dataset, model):
     loss = loss/batches
 
     return loss
+
+@torch.no_grad()
+def approximate_rmse(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    mse = 0
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        
+        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+
+        mse += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
+    batch_size = batch_X.shape[0]
+    mse = mse/(batches*batch_size)
+    rmse = sqrt(mse)
+
+    return rmse
+
+@torch.no_grad()
+def approximate_nrmse(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    mse = 0
+    minimum = float("+inf")
+    maximum = float("-inf")
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        minimum = min(minimum, batch_Y.min().item())
+        maximum = max(maximum, batch_Y.max().item())
+        
+        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+
+        mse += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
+    batch_size = batch_X.shape[0]
+    mse = mse/(batches*batch_size)
+    rmse = sqrt(mse)
+    nrmse = rmse/(maximum-minimum)
+
+    return nrmse
+
+@torch.no_grad()
+def approximate_mae(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    mae = 0
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        
+        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+
+        mae += (batch_Y.to(device) - batch_Y_).abs().sum().item()
+    batch_size = batch_X.shape[0]
+    mae = mae/(batches*batch_size)
+
+    return mae
+
+@torch.no_grad()
+def approximate_nmae(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    mae = 0
+    minimum = float("+inf")
+    maximum = float("-inf")
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        minimum = min(minimum, batch_Y.min().item())
+        maximum = max(maximum, batch_Y.max().item())
+        
+        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+
+        mae += (batch_Y.to(device) - batch_Y_).abs().sum().item()
+    batch_size = batch_X.shape[0]
+    mae = mae/(batches*batch_size)
+    nmae = mae/(maximum-minimum)
+
+    return nmae
+
+@torch.no_grad()
+def approximate_r2(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    rss = 0
+    ss = 0
+    mean = 0
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        
+        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+
+        rss += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
+        ss += (batch_Y.to(device)**2).sum().item()
+        mean += batch_Y.to(device).sum().item()
+    batch_size = batch_X.shape[0]
+    mean = mean/(batches*batch_size)
+    tss = ss - batches*batch_size*(mean**2)
+    r2 = 1 - rss/tss
+    
+    return r2
+
+@torch.no_grad()
+def approximate_acc(batches, iterator, dataset, model):
+    model.eval()
+
+    device = next(model.parameters()).device
+    
+    correct = 0
+    for batch in range(batches):
+        batch_X, batch_Y = next(iterator)
+        
+        batch_Y_ = model(transform(dataset, batch_X.to(device))).argmax(dim=-1)
+        
+        correct += (batch_Y_ == batch_Y.to(device)).sum().item()
+    batch_size = batch_X.shape[0]
+    acc = correct/(batches*batch_size)
+
+    return acc

@@ -81,3 +81,22 @@ class MLP3L(torch.nn.Module):
         y = self.l3(a2)
 
         return y
+
+class MLP3L_image(torch.nn.Module):
+    def __init__(self, res=28, d1=16, d2=16, dropout=0, classes=10):
+        super().__init__()
+
+        self.res = res
+        self.d1 = d1
+        self.d2 = d2
+        self.dropout = dropout
+        self.classes = classes
+
+        self.mlp = MLP3L(res*res, d1, d2, classes, dropout=dropout)
+
+    def forward(self, x):
+        x = x.flatten(start_dim=-3, end_dim=-1)
+
+        y = self.mlp(x)
+
+        return y

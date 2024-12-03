@@ -14,10 +14,10 @@ files = utils.get_files(args.DIR)
 archs = natsort.natsorted(utils.match_list(files, f"^(.*)/{args.HYPER}=.*/.*\.dat", 1))
 print(f"🏛️ archs: \x1b[33;1m{len(archs)}\x1b[0m")
 
-min_train_loss_min_archs = float("+inf")
-min_train_loss_mean_archs = float("+inf")
-min_val_loss_min_archs = float("+inf")
-min_val_loss_mean_archs = float("+inf")
+min_train_loss_min_archs = utils.INF
+min_train_loss_mean_archs = utils.INF
+min_val_loss_min_archs = utils.INF
+min_val_loss_mean_archs = utils.INF
 for arch in archs:
     summary = arch+"/summary.dat"
     
@@ -30,10 +30,10 @@ for arch in archs:
     with open(summary,"w") as file:
         file.write(f"{args.HYPER} min_train_loss_min min_train_loss_mean min_train_loss_top min_train_loss_bot min_val_loss_min min_val_loss_mean min_val_loss_top min_val_loss_bot\n")
     
-    min_train_loss_min_hypers = float("+inf")
-    min_train_loss_mean_hypers = float("+inf")
-    min_val_loss_min_hypers = float("+inf")
-    min_val_loss_mean_hypers = float("+inf")
+    min_train_loss_min_hypers = utils.INF
+    min_train_loss_mean_hypers = utils.INF
+    min_val_loss_min_hypers = utils.INF
+    min_val_loss_mean_hypers = utils.INF
     arch_diverged = 0
     for i, hyper in enumerate(hypers):
         hyper_path = "%s/%s=%f" % (arch, args.HYPER, hyper)
@@ -47,8 +47,8 @@ for arch in archs:
                 # Skip header
                 header = file.readline()
 
-                min_train_loss = float("+inf")
-                min_val_loss = float("+inf")
+                min_train_loss = utils.INF
+                min_val_loss = utils.INF
                 seed_diverged = False
                 for line in file:
                     cols = line.rstrip().split(' ')

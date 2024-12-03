@@ -3,8 +3,10 @@
 **/**.log
 **/**.pdf
 **/**.dat
+**/**.db
 out
 california_housing
+mnist
 cifar10
 shakespearefirstfolio
 ancient_greek_theatre
@@ -13,3 +15,5 @@ finewebedu
 openwebtext
 minipile
 .DS_Store
+src/create_study.py
+src/optimization.py
