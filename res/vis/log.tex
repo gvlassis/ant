@@ -82,7 +82,7 @@
         \pgfplotsset{cycle list shift=-1}
         \addplot+[name path=top, opacity=0, forget plot] table [x=train_batch, y index=\groupelemoneindex] {\logpath};
         \addplot+[name path=bot, opacity=0, forget plot] table [x=train_batch, y index=\groupelemtwoindex] {\logpath};
-        \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
+        \addplot+[opacity=2/8, forget plot] fill between [of=top and bot];
         \pgfplotsset{cycle list shift=0}
 
         \nextgroupplot[xlabel=train_batch, ylabel=grad_max]
@@ -93,7 +93,7 @@
         \pgfplotsset{cycle list shift=-1}
         \addplot+[name path=top, opacity=0, forget plot] table [x=train_batch, y index=\groupelemfiveindex] {\logpath};
         \addplot+[name path=bot, opacity=0, forget plot] table [x=train_batch, y index=\groupelemsixindex] {\logpath};
-        \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
+        \addplot+[opacity=2/8, forget plot] fill between [of=top and bot];
         \pgfplotsset{cycle list shift=0}
 
         \nextgroupplot[xlabel=train_batch, ylabel=data_max]

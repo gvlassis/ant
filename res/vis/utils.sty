@@ -14,16 +14,16 @@
 \newcommand{\plotspl}[5]{
     % #1: dataset, #2: family, #3: parametrization, #4: hyper, #5: split
 
-    \makeatletter\immediate\write18{find "../out/#1/#2/#3" -type d -path "*/#4=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
+    \makeatletter\immediate\write18{find "../../out/#1/#2/#3" -type d -path "*/#4=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
     \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
     \immediate\write18{rm ζs.txt}
     
     \foreach \ζ in \zetas{
-        \addplot table [x=#4, y=min_#5_loss_mean] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot table [x=#4, y=min_#5_loss_mean] {../../out/#1/#2/#3/ζ=\ζ/summary.dat};
         \edef\tmp{\noexpand\addlegendentry{$\zeta=\ζ$}}\tmp
         \pgfplotsset{cycle list shift=-1}
-        \addplot+[name path=top, opacity=0, forget plot] table [x=#4, y=min_#5_loss_top] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
-        \addplot+[name path=bot, opacity=0, forget plot] table [x=#4, y=min_#5_loss_bot] {../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot+[name path=top, opacity=0, forget plot] table [x=#4, y=min_#5_loss_top] {../../out/#1/#2/#3/ζ=\ζ/summary.dat};
+        \addplot+[name path=bot, opacity=0, forget plot] table [x=#4, y=min_#5_loss_bot] {../../out/#1/#2/#3/ζ=\ζ/summary.dat};
         \addplot+[opacity=3/8, forget plot] fill between [of=top and bot];
         \pgfplotsset{cycle list shift=0}
     }
@@ -41,7 +41,7 @@
 \newcommand{\plotfamily}[3]{
     % #1: dataset, #2: family, #3: hyper
     
-    \makeatletter\immediate\write18{find "../out/#1/#2/sp" -type d -path "*/#3=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
+    \makeatletter\immediate\write18{find "../../out/#1/#2/sp" -type d -path "*/#3=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
     \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
     \immediate\write18{rm ζs.txt}
 
@@ -56,6 +56,7 @@
                           legend columns=-1,
                           xlabel=$#3$,
                           xmode=log,
+                          ymode=log,
                           cycle list={[samples of colormap={\lenzetas}]}]
             \plotparametrization{#1}{#2}{sp}{#3}
             \plotparametrization{#1}{#2}{ntk}{#3}

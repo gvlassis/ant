@@ -8,7 +8,7 @@
     \pgfplotsset{compat=newest}
     \usepgfplotslibrary{groupplots}
 \usepackage{shellesc}
-    \makeatletter\immediate\write18{find "../out/\dataset/\family/\parametrization" -type d -path "*/\hyper=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
+    \makeatletter\immediate\write18{find "../../out/\dataset/\family/\parametrization" -type d -path "*/\hyper=*" -printf "\@percentchar h\@backslashchar n" | cut -d = -f 2 | sort -nu | tr "\@backslashchar n" "," | sed "s/,$//" > ζs.txt}\makeatother
 \usepackage{catchfile}
     \CatchFileDef{\zetas}{ζs.txt}{\endlinechar=-1}
     \immediate\write18{rm ζs.txt}
@@ -30,6 +30,7 @@
                       legend columns=-1,
                       xlabel=$\hyper$,
                       xmode=log,
+                      ymode=log,
                       cycle list={[samples of colormap={\lenzetas}]}]
         \plotparametrization{\dataset}{\family}{\parametrization}{\hyper}
     \end{groupplot}
