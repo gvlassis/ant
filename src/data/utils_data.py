@@ -12,7 +12,7 @@ src_path = os.path.dirname(data_path)
 root_path = os.path.dirname(src_path)
 
 DATASETS_TABULAR = ["california_housing"]
-DATASETS_IMAGE = ["mnist", "cifar10"]
+DATASETS_IMAGE = ["mnist", "cifar10", "tinyimagenet"]
 DATASETS_TEXT = ["shakespearefirstfolio", "wikitext", "minipile", "openwebtext", "finewebedu", "ancient_greek_theatre", "culturay_el"]
 DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
 
@@ -33,6 +33,12 @@ def get_splits(dataset):
         train_dataset = cifar10_train_dataset["train"]
         val_dataset = cifar10_train_dataset["test"]
         test_dataset = datasets.load_dataset("uoft-cs/cifar10", split="test", trust_remote_code=True)
+    elif dataset=="tinyimagenet":
+        tinyimagenet_train_dataset = datasets.load_dataset("zh-plus/tiny-imagenet", split="train", trust_remote_code=True)
+        tinyimagenet_train_dataset = tinyimagenet_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True)
+        train_dataset = tinyimagenet_train_dataset["train"]
+        test_dataset = tinyimagenet_train_dataset["test"]
+        val_dataset = datasets.load_dataset("zh-plus/tiny-imagenet", split="valid", trust_remote_code=True)
     elif dataset=="shakespearefirstfolio":
         train_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="train", trust_remote_code=True)
         val_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="validation", trust_remote_code=True)
