@@ -127,13 +127,13 @@ model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args
 model = model.to(model_device)
 if args.info:
     batch_X, _ = next(train_iterator)
-    X = batch_X[0]
+    # Not having batch dimension can cause problems (e.g. BatchNorm)
+    X = batch_X[:1]
     input_data = data.utils_data.transform(args.dataset, X.to(model_device))
     if master: print(fvcore.nn.flop_count_table(fvcore.nn.FlopCountAnalysis(model, input_data), max_depth=3, show_param_shapes=False))
 if args.graph:
     batch_X, _ = next(train_iterator)
-    X = batch_X[0]
-    input_data = data.utils_data.transform(args.dataset, X.to(model_device))
+    input_data = data.utils_data.transform(args.dataset, batch_X.to(model_device))
     if master: torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
 # Get the parameters' names before DDP/compile
 train_stats_header = models.utils_models.get_train_stats_header(model)

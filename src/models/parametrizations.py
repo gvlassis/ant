@@ -127,7 +127,7 @@ def lookup_table2(fanin, parameter_type, layer, c_input, c_hidden, c_output, k_i
             μ = 0
             B0 = 0
             C0 = k_input
-        elif parameter_type == "LayerNorm.weight":
+        elif parameter_type == "Norm.weight":
             μ = 1
             B0 = 0
             C0 = k_input
@@ -163,8 +163,8 @@ def test_table2(c_input, c_hidden, c_output, k_input, k_hidden, k_output):
 
     μ, B0, C0 = lookup_table2(1, "bias", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
     print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "bias", "input", "%f" % μ, "%f" % B0, "%f" % C0))
-    μ, B0, C0 = lookup_table2(1, "LayerNorm.weight", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
-    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "LayerNorm.weight", "input", "%f" % μ, "%f" % B0, "%f" % C0))
+    μ, B0, C0 = lookup_table2(1, "Norm.weight", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+    print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "Norm.weight", "input", "%f" % μ, "%f" % B0, "%f" % C0))
     μ, B0, C0 = lookup_table2(1, "class", "input", c_input, c_hidden, c_output, k_input, k_hidden, k_output)
     print("%12.12s %18.18s %8.8s %8.8s %8.8s %8.8s" % ("fanin=1", "class", "input", "%f" % μ, "%f" % B0, "%f" % C0))
     
@@ -191,7 +191,7 @@ def get_fan(parameter, suffix, parent):
     elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and suffix=="bias":
         fanin = 1
         fanout = len(parameter)
-    elif isinstance(parent, torch.nn.LayerNorm) and (suffix=="weight" or suffix=="bias"):
+    elif isinstance(parent, (torch.nn.BatchNorm2d, torch.nn.LayerNorm)) and (suffix=="weight" or suffix=="bias"):
         fanin = 1
         fanout = len(parameter)
     else:
@@ -235,10 +235,10 @@ def get_layers(model, model_, warning=True):
 def get_parameter_type(parameter, suffix, parent):
     if isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and suffix=="weight":
         parameter_type = "Linear/Conv.weight"
-    elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d, torch.nn.LayerNorm)) and suffix=="bias":
+    elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d, torch.nn.BatchNorm2d, torch.nn.LayerNorm)) and suffix=="bias":
         parameter_type = "bias"
-    elif isinstance(parent, torch.nn.LayerNorm) and suffix=="weight":
-        parameter_type = "LayerNorm.weight"
+    elif isinstance(parent, (torch.nn.BatchNorm2d, torch.nn.LayerNorm)) and suffix=="weight":
+        parameter_type = "Norm.weight"
     else:
         # class
         if parameter.ndim == 1:

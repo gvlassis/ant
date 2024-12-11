@@ -2,11 +2,12 @@ import torch
 import warnings
 from . import mlp
 from . import vgg
+from . import resnet
 from . import vit
 from . import transformer
 from . import parametrizations
 
-FAMILIES=["mlp", "mlp_image", "vgg", "vit", "transformer"]
+FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer"]
 
 def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
@@ -25,6 +26,11 @@ def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_i
         model0 = vgg.VGG(out_channels0=4)
         model = vgg.VGG(out_channels0=4*ζ)
         model_ = vgg.VGG(out_channels0=4*2)
+
+    elif family=="resnet":
+        model0 = resnet.ResNet(out_channels0=16)
+        model = resnet.ResNet(out_channels0=16*ζ)
+        model_ = resnet.ResNet(out_channels0=16*2)
 
     elif family=="vit":
         channels = 3
