@@ -5,6 +5,7 @@ import torch
 import torchvision.transforms.v2
 import sys
 from math import sqrt
+import collections
 
 script_path = os.path.abspath(__file__)
 data_path = os.path.dirname(script_path)
@@ -138,7 +139,16 @@ def image_dataset_to_tensors(dataset):
     
     # Unpacking set to single element
     name, = set(["img", "image"]) & set(dataset.column_names)
-
+    
+    # Image datasets may contain mixed modes (e.g. ImageNet contains greyscale images)
+    print("🌄 Modes")
+    modes = [ image.mode for image in dataset[name] ]
+    modes = collections.Counter(modes)
+    modes = dict(sorted(modes.items(), key=lambda item: item[1], reverse=True))
+    for mode in modes.keys():
+        print("%6.6s: %10.10s" % (mode,modes[mode]))
+    dataset = dataset.filter(lambda sample: sample[name].mode==next(iter(modes)))
+    
     X_dataset = dataset.map(lambda sample: {"tensor": torchvision.transforms.v2.functional.pil_to_tensor(sample[name])}, remove_columns=["label"], num_proc=cores)
     X = torch.tensor(X_dataset["tensor"], dtype=torch.uint8)
     Y = torch.tensor(dataset["label"])
