@@ -84,7 +84,7 @@ class StageDownsamplingA(torch.nn.Module):
         return self.blocks(x)
         
 class ResNet(torch.nn.Module):
-    def __init__(self, res=64, num2=3, num3=4, num4=6, num5=3, out_channels0=64, dropout=0.5, classes=200):
+    def __init__(self, res=64, num2=2, num3=2, num4=2, num5=2, out_channels0=4, dropout=0.5, classes=200):
         super().__init__()
 
         self.res = res
@@ -92,6 +92,7 @@ class ResNet(torch.nn.Module):
         self.num3 = num3
         self.num4 = num4
         self.num5 = num5
+        self.num = num2+num3+num4+num5
         self.out_channels0 = out_channels0
         self.dropout = dropout
         self.classes = classes

@@ -28,9 +28,9 @@ def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_i
         model_ = vgg.VGG(out_channels0=4*2)
 
     elif family=="resnet":
-        model0 = resnet.ResNet(out_channels0=16)
-        model = resnet.ResNet(out_channels0=16*ζ)
-        model_ = resnet.ResNet(out_channels0=16*2)
+        model0 = resnet.ResNet(out_channels0=4)
+        model = resnet.ResNet(out_channels0=4*ζ)
+        model_ = resnet.ResNet(out_channels0=4*2)
 
     elif family=="vit":
         channels = 3
@@ -49,7 +49,7 @@ def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_i
         classes = 10
         model0 = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
         model = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
-        model_ = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 8, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
+        model_ = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
 
     elif family=="transformer":
         num_blocks = 12
