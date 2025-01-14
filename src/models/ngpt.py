@@ -1,130 +1,150 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from math import sqrt
+from torch import arccos, sin
+import matplotlib.pyplot
 
-# -------------------------------------------------------------------------
-# Simple sphere normalization function
-# -------------------------------------------------------------------------
-def SphereNorm(self, x):
-    res = x / x.norm(p=2, dim=-1, keepdim=True)
-    return res
+# Normalizes along last dimension on the hypersphere
+# (s1*...*)s-1
+def sphere_norm(X):
+    return X/torch.linalg.vector_norm(X, ord=2, dim=-1, keepdim=True)
 
-# -------------------------------------------------------------------------
-# Stackable nGPTBlock from https://arxiv.org/abs/2410.01131
-# -------------------------------------------------------------------------
-class nGPTBlock(nn.Module):
+# Samples from uniform distribution on the hypersphere
+def rands(*size):
+    return sphere_norm(torch.randn(*size))
 
-    def __init__(self, config):
+def test_rands(samples=50):
+    xy = rands((samples, 2))
+    
+    # Orthogonal aspect ratio
+    matplotlib.pyplot.axis("equal")
+    matplotlib.pyplot.gca().add_artist(matplotlib.pyplot.Circle((0,0), radius=1, fill=False))
+    matplotlib.pyplot.scatter(xy[:,0],xy[:,1])
+    matplotlib.pyplot.show()
+    matplotlib.pyplot.clf()
+
+# (s1*...*)s-1
+def angle(a, b, keepdim=False):
+    # (s1*...*)(1)
+    cosθ = (a*b).sum(dim=-1, keepdim=keepdim)
+    θ = arccos(cosθ)
+
+    return θ
+
+class Slerp(torch.nn.Module):
+    def __init__(self, α=0.5):
         super().__init__()
 
-        d = config.d
+        self.α = α
+    
+    # (s1*...*)s-1
+    def forward(self, a, b):
+        # (s1*...*)1
+        θ = angle(a, b, keepdim=True)
 
-        self.k = nn.Linear(d, d, bias=False)
-        self.q = nn.Linear(d, d, bias=False)
-        self.v = nn.Linear(d, d, bias=False)
-        self.att_proj = nn.Linear(d, d, bias=False)
-        self.fc = nn.Linear(d, 2 * 4 * d, bias=False)
-        self.silu = nn.SiLU()
-        self.mlp_c_proj = nn.Linear(4 * d, d, bias=False)
-
-        # For scaling vector Aa
-        self.Aa_init = 0.05
-        self.Aa_scale = 1/sqrt(d)
-        self.Aa = torch.nn.Parameter(self.Aa_scale*torch.ones(d))
-        # For scaling vector Am
-        self.Am_init = 0.05
-        self.Am_scale = 1/sqrt(d)
-        self.Am = torch.nn.Parameter(self.Am_scale*torch.ones(d))
-        # For scaling vector sqk
-        self.sqk_init = 1.0       
-        self.sqk_scale = 1/sqrt(d)
-        self.sqk = torch.nn.Parameter(self.sqk_scale*torch.ones(d))
-        # For scaling vector suv
-        self.suv_init = 1.0
-        self.suv_scale = 1.0
-        self.suv = torch.nn.Parameter(self.suv_scale*torch.ones(2 * 4 * d))
-
-    def forward(self, h):
-        B, T, C = h.size()
+        slerp = ( sin((1-self.α)*θ)*a + sin(self.α*θ)*b )/sin(θ)
         
-        q = self.q(h)
-        k = self.k(h)
-        v = self.v(h)
+        return slerp
 
-        q = q.view(B, T, heads, d // heads) 
-        k = k.view(B, T, heads, d // heads)
-        v = v.view(B, T, heads, d // heads)
+    def test(self, s1=10, s2=2):
+        a = rands((s1, s2))
+        b = rands((s1, s2))
 
-        q, k = RoPE(q.transpose(1, 2), k.transpose(1, 2))
-        q = q.transpose(2, 1)
-        k = k.transpose(2, 1)
-
-        sqk = (self.sqk * (self.sqk_init/self.sqk_scale)).view(1, 1, heads, d // heads)
-        q = sqk * self.SphereNorm(q)  
-        k = sqk * self.SphereNorm(k)  
-
-        sqrt_head_dim = (d / heads) ** 0.5
+        slerp = self(a,b)
         
-        y = attention()
-        y = y.to(dtype=q.dtype)
-        y = y.contiguous().view(B, T, d)
-
-        h_att = self.att_proj(y)
-
-        alpha = self.Aa * (self.Aa_init / self.Aa_scale)
-        alpha = torch.abs(alpha)
+        # s1
+        norms = torch.linalg.vector_norm(slerp, ord=2, dim=-1)
         
-        A_norm = self.SphereNorm(h)
-        B_norm = self.SphereNorm(h_att)
-            
-        residual = A_norm + alpha * (B_norm - A_norm)
-        h = self.SphereNorm(residual)
+        a_slerp = angle(a, slerp).rad2deg()
+        slerp_b = angle(slerp, b).rad2deg()
+        a_b = angle(a, b).rad2deg()
         
-        uv = self.fc(h)
-        suv = (self.suv * ((self.suv_init/self.suv_scale) * (d ** 0.5))) 
-        uv = suv * uv  
-        u, v = torch.chunk(uv, 2, dim=-1)
-        x_mlp = u * self.silu(v)
-        h_mlp = self.mlp_c_proj(x_mlp)
+        print("\x1b[1m%8.8s %8.8s %8.8s %8.8s\x1b[0m" % ("‖slerp‖", "a_slerp", "slerp_b", "a_b"))
+        for i in range(s1):
+            print("%8.8s %8.8s %8.8s %8.8s" % ("%f" % norms[i], "%.0f°" % a_slerp[i], "%.0f°" % slerp_b[i], "%.0f°" % a_b[i]))
 
-        alpha = self.Am * (self.Am_init / self.Am_scale)
-        alpha = torch.abs(alpha)
+        if s2==2:
+            # Orthogonal aspect ratio
+            matplotlib.pyplot.axis("equal")
+            matplotlib.pyplot.axis([-1.5, 1.5, -1.5, 1.5])
+            matplotlib.pyplot.gca().add_artist(matplotlib.pyplot.Circle((0,0), radius=1, fill=False))
+            matplotlib.pyplot.scatter(a[-1,0], a[-1,1], c="red")
+            matplotlib.pyplot.scatter(slerp[-1,0], slerp[-1,1], c="green")
+            matplotlib.pyplot.scatter(b[-1,0], b[-1,1], c="blue")
+            matplotlib.pyplot.show()
+            matplotlib.pyplot.clf()
 
-        A_norm = self.SphereNorm(h)
-        B_norm = self.SphereNorm(h_mlp)
-            
-        residual = A_norm + alpha * (B_norm - A_norm)
-        h = self.SphereNorm(residual)
-
-        return h
-
-# -------------------------------------------------------------------------
-# nGPT model from https://arxiv.org/abs/2410.01131
-# -------------------------------------------------------------------------
-class GPT(nn.Module):
-
-    def __init__(self):
-        super().__init__()
-
-        self.blocks = nn.ModuleDict(dict(Ein = nn.Embedding(vocab_size, d),h = nn.ModuleList([nGPTBlock() for i in range(config.n_layer)])))
-        self.Eout = nn.Linear(d, vocab_size, bias=False)
-
-        self.sz_init = 1.00
-        self.sz_scale = 1/sqrt(d)
-        self.sz = torch.nn.Parameter(self.sz_scale*torch.ones(config.vocab_size, dtype=torch.float32))
-
-    def forward(self, idx, targets=None):
-        device = idx.device
-        b, t = idx.size()
-        
-        x = self.blocks.Ein(idx)
-        for block in self.blocks.h:
-            x = block(x)
-
-            logits = self.Eout(x)
-            sz = self.sz * (self.sz_init/self.sz_scale)
-            logits = sz * logits
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-
-        return logits, loss
+# class Block(torch.nn.Module):
+#     def __init__(self, heads, d_head, is_causal, exp_factor=4, act=torch.nn.ReLU()):
+#         super().__init__()
+#
+#         self.heads = heads
+#         self.d_head = d_head
+#         self.d = heads * d_head
+#         self.is_causal = is_causal
+#         self.exp_factor = exp_factor
+#         self.d_hidden = exp_factor*self.d
+#         self.act = act
+#
+#         self.mhsa = MHSA(heads, d_head, is_causal, scale_type)
+#         if norm_type=="layer":
+#             self.norm1 = torch.nn.LayerNorm(self.d, bias=bias)
+#             self.norm2 = torch.nn.LayerNorm(self.d, bias=bias)
+#         elif norm_type=="rms":
+#             self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+#             self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+#         self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
+#
+#     def forward(self, X):
+#         Y = self.mhsa(self.norm1(X))
+#         Y_ = torch.nn.functional.dropout(Y, p=self.dropout, training=self.training)
+#         Y__ = X + Y_
+#
+#         Z = self.mlp(self.norm2(Y__))
+#         Z_ = torch.nn.functional.dropout(Z, p=self.dropout, training=self.training)
+#         Z__ = Y__ + Z_
+#
+#         return Z__
+#
+# class EncBlock(Block):
+#     def __init__(self, heads, d_head, exp_factor=4, dropout=0, act=torch.nn.ReLU()):
+#         super().__init__(heads, d_head, False, exp_factor, act)
+#
+# class DecBlock(Block):
+#     def __init__(self, heads, d_head, exp_factor=4, act=torch.nn.ReLU()):
+#         super().__init__(heads, d_head, True, exp_factor, act)
+#
+# class nGPT(torch.nn.Module):
+#     def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, exp_factor=4, max_context=128, all_pos=False, act=torch.nn.ReLU()):
+#         super().__init__()
+#
+#         self.vocab_size = vocab_size
+#         self.num_blocks = num_blocks
+#         self.heads = heads
+#         self.d_head = d_head
+#         self.d = heads * d_head
+#         self.exp_factor = exp_factor
+#         self.dropout = dropout
+#         self.max_context = max_context
+#         self.all_pos = all_pos
+#         self.act = act
+#
+#         self.Ein = torch.nn.Embedding(vocab_size, self.d)
+#
+#         self.blocks = torch.nn.Sequential(*[DecBlock(heads, d_head, exp_factor, act) for _ in range(num_blocks)])
+#
+#         self.Eout = torch.nn.Linear(self.d, vocab_size, bias=False)
+#
+#         self.sz = torch.nn.Parameter()
+#
+#     # (batches*)context
+#     def forward(self, ids):
+#         context = ids.shape[-1]
+#
+#         # (batches*)context*d
+#         H = 
+#
+#         # (batches*)context*vocab_size
+#         Z = self.Eout(H)
+#
+#         Z = self.sz * Z
+#
+#         return Z

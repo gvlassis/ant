@@ -401,3 +401,24 @@ def approximate_acc(batches, iterator, dataset, model):
     acc = correct/(batches*batch_size)
 
     return acc
+
+# @torch.no_grad()
+# def approximate_ppl(batches, iterator, dataset, model):
+#     model.eval()
+#
+#     device = next(model.parameters()).device
+#
+#     ce = 0
+#     for batch in range(batches):
+#         batch_X, batch_Y = next(iterator)
+#
+#         batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+#
+#         ce += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
+#     batch_size = batch_X.shape[0]
+#     mse = mse/(batches*batch_size)
+#     ppl = sqrt(ce)
+#
+#     return ppl
+#
+#     batch_Y.to(torch.int64) - torch.iinfo(torch.int16).min

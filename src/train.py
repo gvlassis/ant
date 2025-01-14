@@ -19,7 +19,7 @@ parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", t
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
 parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=False)
 parser.add_argument("--warning", type=utils.str_to_bool, default=True)
-parser.add_argument("--verbose", help="If True, print a pretty log in the stdout. If False, only print the final min_val_loss. Useful for piping.", type=utils.str_to_bool, default=True)
+parser.add_argument("--verbose", help="If True, print a pretty log in the stdout. If False, only print the final val_loss. Useful for piping.", type=utils.str_to_bool, default=True)
 parser.add_argument("--extra_freq", help="Every how many batches to perform the extra evaluations", type=int, default=utils.INF)
 parser.add_argument("--rmse", help="As an extra, evaluate the train and validation Root Mean Squared Errors", type=utils.str_to_bool, default=False)
 parser.add_argument("--nrmse", help="As an extra, evaluate the train and validation Normalized Root Mean Squared Errors", type=utils.str_to_bool, default=False)
@@ -27,6 +27,7 @@ parser.add_argument("--mae", help="As an extra, evaluate the train and validatio
 parser.add_argument("--nmae", help="As an extra, evaluate the train and validation Normalized Mean Absolute Errors", type=utils.str_to_bool, default=False)
 parser.add_argument("--r2", help="As an extra, evaluate the train and validation Coefficients of Determination", type=utils.str_to_bool, default=False)
 parser.add_argument("--acc", help="As an extra, evaluate the train and validation accuracies", type=utils.str_to_bool, default=False)
+parser.add_argument("--ppl", help="As an extra, evaluate the train and validation perplexities", type=utils.str_to_bool, default=False)
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
 parser.add_argument("--vocab_size", type=int, default=50304)
@@ -296,6 +297,15 @@ for train_batch in range(args.train_batches):
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_acc, val_acc))
 
+        if args.ppl:
+            train_ppl = data.utils_data.approximate_ppl(args.val_batches, train_iterator,  args.dataset, model)
+            print("%12.12s: %12.12s" % ("train_ppl", "%f" % train_ppl))
+            val_ppl = data.utils_data.approximate_ppl(args.val_batches, val_iterator,  args.dataset, model)
+            print("%12.12s: %12.12s" % ("val_ppl", "%f" % val_ppl))
+
+            with open(extra_path,"a") as file:
+                file.write(" %f %f" % (train_ppl, val_ppl))
+
         print("━"*70)
 
         with open(extra_path,"a") as file:
@@ -306,7 +316,7 @@ for train_batch in range(args.train_batches):
     scaler.update()
     scheduler.step()
 
-if master and (not args.verbose): print("%f" % min_val_loss, end="")
+if master and (not args.verbose): print("%f" % val_loss, end="")
 
 if torchelastic: torch.distributed.destroy_process_group()
 exit(0)
