@@ -1,11 +1,12 @@
 import torch
 from torch import arccos, sin
 import matplotlib.pyplot
+from math import sqrt
 
 # Normalizes along last dimension on the hypersphere
 # (s1*...*)s-1
 def sphere_norm(X):
-    return X/torch.linalg.vector_norm(X, ord=2, dim=-1, keepdim=True)
+    return torch.nn.functional.normalize(X, dim=-1)
 
 # Samples from uniform distribution on the hypersphere
 def rands(*size):
@@ -72,79 +73,206 @@ class Slerp(torch.nn.Module):
             matplotlib.pyplot.show()
             matplotlib.pyplot.clf()
 
-# class Block(torch.nn.Module):
-#     def __init__(self, heads, d_head, is_causal, exp_factor=4, act=torch.nn.ReLU()):
-#         super().__init__()
-#
-#         self.heads = heads
-#         self.d_head = d_head
-#         self.d = heads * d_head
-#         self.is_causal = is_causal
-#         self.exp_factor = exp_factor
-#         self.d_hidden = exp_factor*self.d
-#         self.act = act
-#
-#         self.mhsa = MHSA(heads, d_head, is_causal, scale_type)
-#         if norm_type=="layer":
-#             self.norm1 = torch.nn.LayerNorm(self.d, bias=bias)
-#             self.norm2 = torch.nn.LayerNorm(self.d, bias=bias)
-#         elif norm_type=="rms":
-#             self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-#             self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-#         self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
-#
-#     def forward(self, X):
-#         Y = self.mhsa(self.norm1(X))
-#         Y_ = torch.nn.functional.dropout(Y, p=self.dropout, training=self.training)
-#         Y__ = X + Y_
-#
-#         Z = self.mlp(self.norm2(Y__))
-#         Z_ = torch.nn.functional.dropout(Z, p=self.dropout, training=self.training)
-#         Z__ = Y__ + Z_
-#
-#         return Z__
-#
-# class EncBlock(Block):
-#     def __init__(self, heads, d_head, exp_factor=4, dropout=0, act=torch.nn.ReLU()):
-#         super().__init__(heads, d_head, False, exp_factor, act)
-#
-# class DecBlock(Block):
-#     def __init__(self, heads, d_head, exp_factor=4, act=torch.nn.ReLU()):
-#         super().__init__(heads, d_head, True, exp_factor, act)
-#
-# class nGPT(torch.nn.Module):
-#     def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, exp_factor=4, max_context=128, all_pos=False, act=torch.nn.ReLU()):
-#         super().__init__()
-#
-#         self.vocab_size = vocab_size
-#         self.num_blocks = num_blocks
-#         self.heads = heads
-#         self.d_head = d_head
-#         self.d = heads * d_head
-#         self.exp_factor = exp_factor
-#         self.dropout = dropout
-#         self.max_context = max_context
-#         self.all_pos = all_pos
-#         self.act = act
-#
-#         self.Ein = torch.nn.Embedding(vocab_size, self.d)
-#
-#         self.blocks = torch.nn.Sequential(*[DecBlock(heads, d_head, exp_factor, act) for _ in range(num_blocks)])
-#
-#         self.Eout = torch.nn.Linear(self.d, vocab_size, bias=False)
-#
-#         self.sz = torch.nn.Parameter()
-#
-#     # (batches*)context
-#     def forward(self, ids):
-#         context = ids.shape[-1]
-#
-#         # (batches*)context*d
-#         H = 
-#
-#         # (batches*)context*vocab_size
-#         Z = self.Eout(H)
-#
-#         Z = self.sz * Z
-#
-#         return Z
+class NormLerp(torch.nn.Module):
+    def __init__(self, d):
+        super().__init__()
+
+        self.d = d
+        self.α = torch.nn.Parameter(torch.full((d,), 0.5))    
+
+    # (s1*...*)s-1
+    def forward(self, a, b):
+        lerp = a + self.α*(b-a)
+        
+        return sphere_norm(lerp)
+
+# Sec. 2.3.2 of https://arxiv.org/abs/2410.01131
+class NormMHSA(torch.nn.Module):
+    # Remember that d_q=d_k. Moreover, assume that d_x=d_q=d_v:=d
+    def __init__(self, heads, d_head, is_causal):
+        super().__init__()
+
+        self.heads = heads
+        self.d_head = d_head
+        self.d = heads * d_head
+        self.is_causal = is_causal
+
+        # We fuse Q, K and V (and different heads) for better parallelization, as well as less code
+        self.Wqkv = torch.nn.Linear(self.d, 3*self.d, False)
+
+        self.sqk = torch.nn.Parameter((heads, d_head))
+        
+        # DO NOT FORGET THE OUTPUT PROJECTION
+        self.Wo = torch.nn.Linear(self.d, self.d, False)
+
+    # (batches*)context*d
+    def forward(self, X):
+        # (batches*)context*(3d)
+        QKV = self.Wqkv(X)
+
+        # (batches*)context*3*heads*d_head
+        QKV = QKV.unflatten(dim=-1, sizes=(3, self.heads, self.d_head))
+        # (batches*)3*heads*context*d_head
+        QKV = QKV.movedim(-4,-2)
+        # (batches*)2*heads*context*d_head, (batches*)heads*context*d_head
+        QK, V = QKV[...,:1,:,:,:], QKV[...,2,:,:,:]
+
+        QK = self.sqk.unsqueeze(1) * sphere_norm(QK)
+        Q, K = QK[...,0,:,:,:], QK[...,1,:,:,:]
+
+        # In the original paper, V is NOT normalized
+
+        # Attention scale is handled by sqk
+        # (batches*)heads*context*d_head
+        Y = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=self.is_causal, scale=1)
+        # (batches*)context*heads*d_head
+        Y = torch.movedim(Y, source=-3, destination=-2)
+        # (batches*)context*d
+        Y = torch.flatten(Y, start_dim=-2, end_dim=-1)
+
+        # In the original paper, Y is NOT normalized
+
+        Y = self.Wo(Y)
+
+        return Y
+
+class NormGLU(torch.nn.Module):
+    def __init__(self, d0, d1):
+        super().__init__()
+
+        self.d0 = d0
+        self.d1 = d1
+        
+        self.Wv = torch.nn.Linear(d0, d1, False)
+        self.sv = torch.nn.Parameter()
+
+        self.Wu = torch.nn.Linear(d0, d1, False)
+        self.su = torch.nn.Parameter()
+
+    def forward(self, x):
+        v = sqrt(self.d0) * self.sv * self.Wv(x)
+
+        u = self.su * self.Wu(x)
+
+        y = torch.nn.functional.silu(v) * u
+
+        return y
+
+class NormMLP2L(torch.nn.Module):
+    def __init__(self, d0, d1, d2):
+        super().__init__()
+
+        self.d0 = d0
+        self.d1 = d1
+        self.d2 = d2
+
+        self.d1_ = (2*d1)//3
+        self.l1 = NormGLU(d0, self.d1_)
+        self.l2 = torch.nn.Linear(self.d1_, d2, bias)
+
+    def forward(self, x):
+        # In the original paper, a1 is NOT normalized
+        a1 = self.l1(x)
+
+        y = self.l2(a1)
+
+        return y
+
+class Block(torch.nn.Module):
+    def __init__(self, heads, d_head, is_causal, exp_factor=4, interp="lerp"):
+        super().__init__()
+
+        self.heads = heads
+        self.d_head = d_head
+        self.d = heads * d_head
+        self.is_causal = is_causal
+        self.exp_factor = exp_factor
+        self.d_hidden = exp_factor*self.d
+        self.interp = interp
+
+        self.norm_mhsa = NormMHSA(heads, d_head, is_causal)
+        if interp=="slerp":
+            self.res1 = Slerp()
+            self.res2 = Slerp()
+        elif interp=="lerp":
+            self.res1 = NormLerp(self.d)
+            self.res2 = NormLerp(self.d)
+        self.norm_mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
+
+    def forward(self, X):
+        HA = sphere_norm(self.norm_mhsa(X))
+        H = self.res1(X, HA)
+
+        HM = sphere_norm(self.norm_mlp(H))
+        H = self.res2(H, HM)
+
+        return H   
+
+class EncBlock(Block):
+    def __init__(self, heads, d_head, exp_factor=4, interp="lerp"):
+        super().__init__(heads, d_head, False, exp_factor, interp)
+
+class DecBlock(Block):
+    def __init__(self, heads, d_head, exp_factor=4, interp="lerp"):
+        super().__init__(heads, d_head, True, exp_factor, interp)
+
+class nGPT(torch.nn.Module):
+    def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, exp_factor=4, max_context=128, all_pos=False, interp="lerp"):
+        super().__init__()
+
+        self.vocab_size = vocab_size
+        self.num_blocks = num_blocks
+        self.heads = heads
+        self.d_head = d_head
+        self.d = heads * d_head
+        self.exp_factor = exp_factor
+        self.max_context = max_context
+        self.all_pos = all_pos
+        self.interp = interp
+
+        self.Ein = torch.nn.Embedding(vocab_size, self.d)
+
+        self.blocks = torch.nn.Sequential(*[DecBlock(heads, d_head, exp_factor, interp) for _ in range(num_blocks)])
+
+        self.Eout = torch.nn.Linear(self.d, vocab_size, bias=False)
+        
+        self.sz = torch.nn.Parameter()
+
+    # (batches*)context
+    def forward(self, ids):
+        context = ids.shape[-1]
+
+        # (batches*)context*d
+        X = self.Ein(ids)
+
+        H = X
+        for block in self.blocks:
+            H_ = block(H)
+            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+
+        # (batches*)context*vocab_size
+        Z = self.Eout(H)
+
+        Z = self.sz * Z
+
+        return Z
+
+    # (batches*)context
+    def forward(self, ids):
+        context = ids.shape[-1]
+
+        # (batches*)context*d
+        X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
+        X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
+
+        Y = X_
+        for block in self.blocks:
+            Y_ = block(Y)
+            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+            
+        Y__ = self.norm(Y_)
+
+        # (batches*)context*vocab_size
+        Z = self.linear(Y__)
+
+        return Z
