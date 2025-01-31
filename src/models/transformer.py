@@ -2,6 +2,7 @@ import torch
 from . import mlp
 from math import sqrt
 import math
+import flash_attn
 
 SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 
@@ -27,6 +28,43 @@ def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.
     attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
     return attn_weight
 
+# # (batches*)heads*context*d_head
+# def sdpa_pytorch(Q, K, V, is_causal, scale=None):
+#     if scale is None:
+#         d_head = Q.shape[-1]
+#         scale = 1/sqrt(d_head)
+#
+#     if is_causal:
+#
+#
+#     else:
+#
+#     A_ = Q @ K.T
+#     A = torch.softmax(scale*W_, dim=-1)
+#     Y = A @ V
+#
+#     scale: 
+#     temp: 
+#
+# def sdpa_cudnn(Q, K, V, is_causal, scale=None):
+#     return None
+#
+# def sdpa_flash(Q, K, V, is_causal, scale=None):
+#     return flash_attn.flash_attn_func(Q, K, V)
+#
+# def sdpa_flex(Q, K, V, is_causal, scale=None):
+#     return None
+#
+# def sdpa_wrapper(Q, K, V, is_causal, scale=None, backend="flash"):
+#     if backend=="pytorch":
+#         return sdpa_pytorch(Q, K, V, is_causal, scale)
+#     elif backend=="cudnn":
+#         return sdpa_cudnn(Q, K, V, is_causal, scale)
+#     elif backend=="flash":
+#         return sdpa_flash(Q, K, V, is_causal, scale)
+#     elif backend=="flex":
+#         return sdpa_flex(Q, K, V, is_causal, scale)
+    
 # Exposes scale and is faster (https://github.com/rasbt/LLMs-from-scratch/blob/main/ch03/02_bonus_efficient-multihead-attention/mha-implementations.ipynb) than PyTorch's torch.nn.MultiheadAttention
 class MHSA(torch.nn.Module):
     # Remember that d_q=d_k. Moreover, assume that d_x=d_q=d_v:=d
@@ -46,7 +84,7 @@ class MHSA(torch.nn.Module):
         # We fuse Q, K and V (and different heads) for better parallelization, as well as less code
         self.QKV = torch.nn.Linear(self.d, 3*self.d, bias=False)
         
-        # First time I implemented MHSA, I forgot the outputs' projection :P
+        # DO NOT FORGET THE OUTPUT PROJECTION
         self.O = torch.nn.Linear(self.d, self.d, bias=False)
 
     # (batches*)context*d

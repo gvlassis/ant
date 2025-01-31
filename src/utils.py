@@ -143,7 +143,7 @@ def generate_text(starting_string, tokenizer, unk_id, eot_id, model, context=128
         
         Y[-1][unk_id] = -float("inf")
 
-        Y_ = torch.nn.functional.softmax(Y[-1]/T, dim=0)
+        Y_ = torch.softmax(Y[-1]/T, dim=0)
         
         topk_indices = torch.topk(Y_, K).indices
         topp_indices = topp(Y_, P)[1]

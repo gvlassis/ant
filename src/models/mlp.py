@@ -1,6 +1,5 @@
 import torch
 
-# Used only in MLP2L in TransformerBlock
 class GLU(torch.nn.Module):
     def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU()):
         super().__init__()
@@ -35,12 +34,6 @@ class MLP2L(torch.nn.Module):
             self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
             self.l2 = torch.nn.Linear(d1, d2, bias)
         elif l1_type=="glu":
-            # Memory of linear: d0*d1 + d1*d0 = 2d0*d1
-            # Memory of GLU: 2d0*d1_ + d1_*d0 = 3d0*d1_
-            # Equating memory: 2d0*d1 = 3d0*d1_ <=> d1_ = (2/3)d0
-            # Computation of linear: d0*d1 + d1*d0 = 2d0*d1
-            # Computation of GLU: 2d0*d1_ + d1_ + d1_*d0 = 3d0*d1_+d1_
-            # Equating computation: 2d0*d1 = 3d0*d1_+d1_ <=> d1_ = [2d0/(3d0+1)]d1 ~ (2/3)d1
             self.d1_ = (2*d1)//3
             self.l1 = GLU(d0, self.d1_, bias, act)
             self.l2 = torch.nn.Linear(self.d1_, d2, bias)

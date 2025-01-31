@@ -2,6 +2,7 @@ import torch
 from torch import arccos, sin
 import matplotlib.pyplot
 from math import sqrt
+from . import transformer
 
 # Normalizes along last dimension on the hypersphere
 # (s1*...*)s-1
@@ -124,7 +125,10 @@ class NormMHSA(torch.nn.Module):
 
         # Attention scale is handled by sqk
         # (batches*)heads*context*d_head
-        Y = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=self.is_causal, scale=1)
+        pos = transformer.get_pos("rot", X.shape[-2], X.shape[-1]):
+        Q_ = transformer.apply_pos("rot", Q, pos): 
+        K_ = transformer.apply_pos("rot", K, pos): 
+        Y = torch.nn.functional.scaled_dot_product_attention(Q_, K_, V, is_causal=self.is_causal, scale=1)
         # (batches*)context*heads*d_head
         Y = torch.movedim(Y, source=-3, destination=-2)
         # (batches*)context*d
@@ -257,22 +261,22 @@ class nGPT(torch.nn.Module):
 
         return Z
 
-    # (batches*)context
-    def forward(self, ids):
-        context = ids.shape[-1]
-
-        # (batches*)context*d
-        X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
-        X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
-
-        Y = X_
-        for block in self.blocks:
-            Y_ = block(Y)
-            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
-            
-        Y__ = self.norm(Y_)
-
-        # (batches*)context*vocab_size
-        Z = self.linear(Y__)
-
-        return Z
+    # # (batches*)context
+    # def forward(self, ids):
+    #     context = ids.shape[-1]
+    #
+    #     # (batches*)context*d
+    #     X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
+    #     X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
+    #
+    #     Y = X_
+    #     for block in self.blocks:
+    #         Y_ = block(Y)
+    #         Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+    #
+    #     Y__ = self.norm(Y_)
+    #
+    #     # (batches*)context*vocab_size
+    #     Z = self.linear(Y__)
+    #
+    #     return Z
