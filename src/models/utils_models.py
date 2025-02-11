@@ -9,7 +9,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer"]
 
-def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning):
+def get_model_optimizer(vocab_size, family, parametrization, ζ, scale_type, pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning, backend):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -54,17 +54,9 @@ def get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, c_i
     elif family=="transformer":
         num_blocks = 12
         heads = 12
-        exp_factor = 4
-        dropout = 0
-        pos_type = "learned"
-        all_pos = False
-        norm_type = "layer"
-        bias = False
-        act = torch.nn.GELU()
-        l1_type = "linear"
-        model0 = transformer.Transformer(vocab_size, num_blocks, heads, 4, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
-        model = transformer.Transformer(vocab_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
-        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, max_context, all_pos, norm_type, bias, act, l1_type)
+        model0 = transformer.Transformer(vocab_size, num_blocks, heads, 4, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, 4*ζ, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
+        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 4*2, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
 
     optimizer = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, warning)
 

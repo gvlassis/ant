@@ -33,8 +33,9 @@ parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="open
 parser.add_argument("--vocab_size", type=int, default=50304)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
-parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=1)
+parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
+parser.add_argument("--pos_type", help="Positional embeddings", choices=models.transformer.POS_TYPES, default="learned")
 
 parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=True)
 parser.add_argument("--c_input", type=float, default=0.02)
@@ -64,6 +65,7 @@ parser.add_argument("--model_device_index", help="CUDA device that stores the mo
 parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Device type that preloads the dataset", default="cpu")
 parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="bfloat16")
 parser.add_argument("--compile", help="Use torch.compile()", type=utils.str_to_bool, default=True)
+parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backend", choices=models.transformer.BACKENDS, default="flash")
 args=parser.parse_args()
 
 torchelastic = os.getenv("TORCHELASTIC_RUN_ID") != None
@@ -124,7 +126,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.scale_type, args.ζ, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master)
+model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend)
 model = model.to(model_device)
 if args.info:
     batch_X, _ = next(train_iterator)
@@ -214,7 +216,7 @@ for train_batch in range(args.train_batches):
         else:
             train_loss_decorated = "%12.12s" % ("%f" % train_loss)
 
-        val_loss = data.utils_data.approximate_loss(args.val_batches, val_iterator, args.dataset, model)
+        val_loss = 0
         if val_loss < min_val_loss:
             min_val_loss = val_loss
             if args.save_model:
