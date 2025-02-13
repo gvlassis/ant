@@ -33,7 +33,7 @@ parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="open
 parser.add_argument("--vocab_size", type=int, default=50304)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522)", choices=models.parametrizations.PARAMETRIZATIONS, default="sp")
-parser.add_argument("--ζ", help="Width scaling factor", type=int, default=1)
+parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
 parser.add_argument("--pos_type", help="Positional embeddings", choices=models.transformer.POS_TYPES, default="learned")
 
@@ -216,7 +216,7 @@ for train_batch in range(args.train_batches):
         else:
             train_loss_decorated = "%12.12s" % ("%f" % train_loss)
 
-        val_loss = 0
+        val_loss = data.utils_data.approximate_loss(args.val_batches, val_iterator, args.dataset, model, args.dtype)
         if val_loss < min_val_loss:
             min_val_loss = val_loss
             if args.save_model:
@@ -246,63 +246,63 @@ for train_batch in range(args.train_batches):
             file.write("%d %d" % (train_batch, train_time))
         
         if args.rmse:
-            train_rmse = data.utils_data.approximate_rmse(args.val_batches, train_iterator,  args.dataset, model)
+            train_rmse = data.utils_data.approximate_rmse(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("train_rmse", "%f" % train_rmse))
-            val_rmse = data.utils_data.approximate_rmse(args.val_batches, val_iterator,  args.dataset, model)
+            val_rmse = data.utils_data.approximate_rmse(args.val_batches, val_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("val_rmse", "%f" % val_rmse))
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_rmse, val_rmse))
 
         if args.nrmse:
-            train_nrmse = data.utils_data.approximate_nrmse(args.val_batches, train_iterator,  args.dataset, model)
+            train_nrmse = data.utils_data.approximate_nrmse(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("train_nrmse", "%f" % train_nrmse))
-            val_nrmse = data.utils_data.approximate_nrmse(args.val_batches, val_iterator,  args.dataset, model)
+            val_nrmse = data.utils_data.approximate_nrmse(args.val_batches, val_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("val_nrmse", "%f" % val_nrmse))
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_nrmse, val_nrmse))
 
         if args.mae:
-            train_mae = data.utils_data.approximate_mae(args.val_batches, train_iterator,  args.dataset, model)
+            train_mae = data.utils_data.approximate_mae(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("train_mae", "%f" % train_mae))
-            val_mae = data.utils_data.approximate_mae(args.val_batches, val_iterator,  args.dataset, model)
+            val_mae = data.utils_data.approximate_mae(args.val_batches, val_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("val_mae", "%f" % val_mae))
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_mae, val_mae))
 
         if args.nmae:
-            train_nmae = data.utils_data.approximate_nmae(args.val_batches, train_iterator,  args.dataset, model)
+            train_nmae = data.utils_data.approximate_nmae(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("train_nmae", "%f" % train_nmae))
-            val_nmae = data.utils_data.approximate_nmae(args.val_batches, val_iterator,  args.dataset, model)
+            val_nmae = data.utils_data.approximate_nmae(args.val_batches, val_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("val_nmae", "%f" % val_nmae))
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_nmae, val_nmae))
 
         if args.r2:
-            train_r2 = data.utils_data.approximate_r2(args.val_batches, train_iterator,  args.dataset, model)
+            train_r2 = data.utils_data.approximate_r2(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("train_r2", "%f" % train_r2))
-            val_r2 = data.utils_data.approximate_r2(args.val_batches, val_iterator,  args.dataset, model)
+            val_r2 = data.utils_data.approximate_r2(args.val_batches, val_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("val_r2", "%f" % val_r2))
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_r2, val_r2))
 
         if args.acc:
-            train_acc = data.utils_data.approximate_acc(args.val_batches, train_iterator,  args.dataset, model)*100
+            train_acc = data.utils_data.approximate_acc(args.val_batches, train_iterator,  args.dataset, model, args.dtype)*100
             print("%12.12s: %6.6s%%" % ("train_acc", "%.2f" % train_acc))
-            val_acc = data.utils_data.approximate_acc(args.val_batches, val_iterator,  args.dataset, model)*100
+            val_acc = data.utils_data.approximate_acc(args.val_batches, val_iterator,  args.dataset, model, args.dtype)*100
             print("%12.12s: %6.6s%%" % ("val_acc", "%.2f" % val_acc))
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_acc, val_acc))
 
         if args.ppl:
-            train_ppl = data.utils_data.approximate_ppl(args.val_batches, train_iterator,  args.dataset, model)
+            train_ppl = data.utils_data.approximate_ppl(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("train_ppl", "%f" % train_ppl))
-            val_ppl = data.utils_data.approximate_ppl(args.val_batches, val_iterator,  args.dataset, model)
+            val_ppl = data.utils_data.approximate_ppl(args.val_batches, val_iterator,  args.dataset, model, args.dtype)
             print("%12.12s: %12.12s" % ("val_ppl", "%f" % val_ppl))
 
             with open(extra_path,"a") as file:

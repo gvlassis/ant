@@ -263,7 +263,7 @@ def get_loss(dataset, model, batch_X, batch_Y, label_smoothing=0):
     return batch_Y_, loss
 
 @torch.no_grad()
-def approximate_loss(batches, iterator, dataset, model):
+def approximate_loss(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -271,13 +271,14 @@ def approximate_loss(batches, iterator, dataset, model):
     loss = 0
     for batch in range(batches):
         batch_X, batch_Y = next(iterator)
-        loss += get_loss(dataset, model, batch_X.to(device), batch_Y.to(device), 0)[1].item()
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            loss += get_loss(dataset, model, batch_X.to(device), batch_Y.to(device), 0)[1].item()
     loss = loss/batches
 
     return loss
 
 @torch.no_grad()
-def approximate_rmse(batches, iterator, dataset, model):
+def approximate_rmse(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -286,7 +287,8 @@ def approximate_rmse(batches, iterator, dataset, model):
     for batch in range(batches):
         batch_X, batch_Y = next(iterator)
         
-        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
 
         mse += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
     batch_size = batch_X.shape[0]
@@ -296,7 +298,7 @@ def approximate_rmse(batches, iterator, dataset, model):
     return rmse
 
 @torch.no_grad()
-def approximate_nrmse(batches, iterator, dataset, model):
+def approximate_nrmse(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -309,7 +311,8 @@ def approximate_nrmse(batches, iterator, dataset, model):
         minimum = min(minimum, batch_Y.min().item())
         maximum = max(maximum, batch_Y.max().item())
         
-        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
 
         mse += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
     batch_size = batch_X.shape[0]
@@ -320,7 +323,7 @@ def approximate_nrmse(batches, iterator, dataset, model):
     return nrmse
 
 @torch.no_grad()
-def approximate_mae(batches, iterator, dataset, model):
+def approximate_mae(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -329,7 +332,8 @@ def approximate_mae(batches, iterator, dataset, model):
     for batch in range(batches):
         batch_X, batch_Y = next(iterator)
         
-        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
 
         mae += (batch_Y.to(device) - batch_Y_).abs().sum().item()
     batch_size = batch_X.shape[0]
@@ -338,7 +342,7 @@ def approximate_mae(batches, iterator, dataset, model):
     return mae
 
 @torch.no_grad()
-def approximate_nmae(batches, iterator, dataset, model):
+def approximate_nmae(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -351,7 +355,8 @@ def approximate_nmae(batches, iterator, dataset, model):
         minimum = min(minimum, batch_Y.min().item())
         maximum = max(maximum, batch_Y.max().item())
         
-        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
 
         mae += (batch_Y.to(device) - batch_Y_).abs().sum().item()
     batch_size = batch_X.shape[0]
@@ -361,7 +366,7 @@ def approximate_nmae(batches, iterator, dataset, model):
     return nmae
 
 @torch.no_grad()
-def approximate_r2(batches, iterator, dataset, model):
+def approximate_r2(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -372,7 +377,8 @@ def approximate_r2(batches, iterator, dataset, model):
     for batch in range(batches):
         batch_X, batch_Y = next(iterator)
         
-        batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
 
         rss += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
         ss += (batch_Y.to(device)**2).sum().item()
@@ -385,7 +391,7 @@ def approximate_r2(batches, iterator, dataset, model):
     return r2
 
 @torch.no_grad()
-def approximate_acc(batches, iterator, dataset, model):
+def approximate_acc(batches, iterator, dataset, model, dtype):
     model.eval()
 
     device = next(model.parameters()).device
@@ -394,7 +400,8 @@ def approximate_acc(batches, iterator, dataset, model):
     for batch in range(batches):
         batch_X, batch_Y = next(iterator)
         
-        batch_Y_ = model(transform(dataset, batch_X.to(device))).argmax(dim=-1)
+        with torch.autocast(device_type=device.type, dtype=dtype):
+            batch_Y_ = model(transform(dataset, batch_X.to(device))).argmax(dim=-1)
         
         correct += (batch_Y_ == batch_Y.to(device)).sum().item()
     batch_size = batch_X.shape[0]
@@ -403,7 +410,7 @@ def approximate_acc(batches, iterator, dataset, model):
     return acc
 
 # @torch.no_grad()
-# def approximate_ppl(batches, iterator, dataset, model):
+# def approximate_ppl(batches, iterator, dataset, model, dtype):
 #     model.eval()
 #
 #     device = next(model.parameters()).device
@@ -412,7 +419,8 @@ def approximate_acc(batches, iterator, dataset, model):
 #     for batch in range(batches):
 #         batch_X, batch_Y = next(iterator)
 #
-#         batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
+#         with torch.autocast(device_type=device.type, dtype=dtype):
+#             batch_Y_ = model(transform(dataset, batch_X.to(device))).flatten()
 #
 #         ce += ((batch_Y.to(device) - batch_Y_)**2).sum().item()
 #     batch_size = batch_X.shape[0]
