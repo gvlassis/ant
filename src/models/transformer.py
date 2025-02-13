@@ -134,18 +134,33 @@ def sdpa_pytorch(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
     else:
         return Y, A__, A_, A
 
+# (batches*)heads/groups*context*d_head
 def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
+    heads = Q.shape[-3]
+    groups = K.shape[-3]
+    context = Q.shape[-2]
+    d_head = Q.shape[-1]
+
+    # CAUTION: FlashAttention expects batches*context*heads/groups*d_head
+    Q = Q.movedim(-3,-2).reshape(-1,context,heads,d_head)
+    K = K.movedim(-3,-2).reshape(-1,context,groups,d_head)
+    V = V.movedim(-3,-2).reshape(-1,context,groups,d_head)
+    
     if swa is None:
         swa = (-1,-1)
 
     Y = flash_attn.flash_attn_func(Q, K, V, causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
-    # Y = torch.nn.functional.scaled_dot_product_attention(Q, K, V, is_causal=causal, scale=scale, enable_gqa=True)
+    
+    # Restore the shape to: (batches*)heads*context*d_head
+    Y = Y.movedim(-3,-2).squeeze(0)
 
     return Y
 
+# (batches*)heads/groups*context*d_head
 def sdpa_flex():
     return None
 
+# (batches*)heads/groups*context*d_head
 def sdpa_cudnn():
     return None
 
@@ -158,6 +173,63 @@ def sdpa_wrapper(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
         return sdpa_flex()
     elif backend=="cudnn":
         return sdpa_cudnn()
+
+def test_sdpa():
+    batches = 32
+    heads = 12
+    context = 1024
+    d_head = 64
+    window = 256
+    groups = 4
+    dtype = torch.bfloat16
+    
+    print("\x1b[1mbfloat16\x1b[0m",end="")
+    Q = torch.rand((batches, heads, context, d_head)).to("cuda:0", dtype)
+    K = torch.rand((batches, heads, context, d_head)).to("cuda:0", dtype)
+    V = torch.rand((batches, heads, context, d_head)).to("cuda:0", dtype)
+    pytorch = sdpa_wrapper(Q, K, V, backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
+
+    print("\x1b[1mcausal\x1b[0m",end="")
+    pytorch = sdpa_wrapper(Q, K, V, causal=get_causal(context).to("cuda:0"), backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, causal=True, backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
+
+    print("\x1b[1malibi\x1b[0m",end="")
+    pytorch = sdpa_wrapper(Q, K, V, alibi=get_alibi(heads,context).to("cuda:0",dtype), backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, alibi=get_m(heads).to("cuda:0"), backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
+
+    print("\x1b[1mswa\x1b[0m",end="")
+    pytorch = sdpa_wrapper(Q, K, V, swa=get_swa(context,window).to("cuda:0"), backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, swa=(window,window), backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
+    
+    print("\x1b[1mcausal+alibi\x1b[0m",end="")
+    pytorch = sdpa_wrapper(Q, K, V, causal=get_causal(context).to("cuda:0"), alibi=get_alibi(heads,context).to("cuda:0",dtype), backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, causal=True, alibi=get_m(heads).to("cuda:0"), backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
+
+    print("\x1b[1mcausal+swa\x1b[0m",end="")
+    pytorch = sdpa_wrapper(Q, K, V, causal=get_causal(context).to("cuda:0"), swa=get_swa(context,window).to("cuda:0"), backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, causal=True, swa=(window,window), backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
+
+    print("\x1b[1mGQA\x1b[0m",end="")
+    Q = torch.rand((batches, heads, context, d_head)).to("cuda:0", dtype)
+    K = torch.rand((batches, groups, context, d_head)).to("cuda:0", dtype)
+    V = torch.rand((batches, groups, context, d_head)).to("cuda:0", dtype)
+    pytorch = sdpa_wrapper(Q, K, V, backend="pytorch")
+    flash = sdpa_wrapper(Q, K, V, backend="flash")
+    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
     def __init__(self, heads, d_head, scale_type="1/sqrt(d)", groups=None):
