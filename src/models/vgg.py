@@ -89,7 +89,7 @@ class VGG(torch.nn.Module):
         self.classes=10
         
         self.stage1 = StageA(res, num1, 3, out_channels0)
-        res = res//2**num1 
+        res = res//2**num1
 
         self.stage2 = StageB(num2, self.stage1.blocks[-1].out_channels, self.stage1.blocks[-1].out_channels*2)
         res = res//2**num2

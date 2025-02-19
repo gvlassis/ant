@@ -5,9 +5,10 @@ from . import vgg
 from . import resnet
 from . import vit
 from . import transformer
+from . import ngpt
 from . import parametrizations
 
-FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer"]
+FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
 def get_model_optimizer(vocab_size, family, parametrization, ζ, scale_type, pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning, backend):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
@@ -54,13 +55,36 @@ def get_model_optimizer(vocab_size, family, parametrization, ζ, scale_type, pos
     elif family=="transformer":
         num_blocks = 12
         heads = 12
-        model0 = transformer.Transformer(vocab_size, num_blocks, heads, 4, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
-        model = transformer.Transformer(vocab_size, num_blocks, heads, 4*ζ, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
-        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 4*2, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
+        d_head0 = 4
+        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, ζ*d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
+        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context)
+
+    elif family=="ngpt":
+        num_blocks = 12
+        heads = 12
+        d_head0 = 4
+        model0 = None
+        model = ngpt.nGPT(vocab_size, num_blocks, heads=heads, d_head=ζ*d_head0, backend=backend, std=c_input, test=test_parametrization)
+        model_ = None
 
     optimizer = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, warning)
 
     return model, optimizer
+
+def weight_norm(model):
+    for parameter_name, parameter in model.named_parameters():
+        parent_name, _, suffix = parameter_name.rpartition(".")
+        parent = model.get_submodule(parent_name)
+        
+        if parent_name.endswith(".lo") and suffix=="weight":
+            parameter.data = ngpt.sphere_norm(parameter.data, dim=0)
+        elif parent_name.endswith(".l2") and suffix=="weight":
+            parameter.data = ngpt.sphere_norm(parameter.data, dim=0)
+        elif suffix=="weight":
+            parameter.data = ngpt.sphere_norm(parameter.data, dim=1)
+
+    return model
 
 def get_train_stats_header(model):
     train_stats_header = ""

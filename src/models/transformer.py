@@ -273,10 +273,10 @@ class MHSA(torch.nn.Module):
         # (batches*)groups*context*d_head
         K = K.movedim(-3,-2)
         V = V.movedim(-3,-2)
-
+        
         if rope is not None:
-            Q = apply_rope(Q,rope)
-            K = apply_rope(K,rope)
+            Q = apply_rope(Q,rope.to(Q.dtype))
+            K = apply_rope(K,rope.to(K.dtype))
 
         # (batches*)heads*context*d_head
         if not return_A:
@@ -340,7 +340,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=6, heads=8, d_head=4, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="learned", max_context=128, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear"):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="learned", max_context=128, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear"):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -365,7 +365,7 @@ class Transformer(torch.nn.Module):
         self.emb = torch.nn.Embedding(vocab_size, self.d)
         
         if pos_type == "learned":
-            pos = torch.randn((max_context, self.d))
+            pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
         self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, groups, exp_factor, dropout, norm_type, bias, act, l1_type) for _ in range(num_blocks)])

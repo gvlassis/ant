@@ -4,10 +4,10 @@ import matplotlib.pyplot
 from math import sqrt
 from . import transformer
 
-# Normalizes along last dimension on the hypersphere
+# Normalizes on the hypersphere along dim
 # (s1*...*)s-1
-def sphere_norm(X):
-    return torch.nn.functional.normalize(X, dim=-1)
+def sphere_norm(X, dim=-1):
+    return torch.nn.functional.normalize(X, dim=dim)
 
 # Samples from uniform distribution on the hypersphere
 def rands(*size):
@@ -32,10 +32,10 @@ def angle(a, b, keepdim=False):
     return θ
 
 class Slerp(torch.nn.Module):
-    def __init__(self, α=0.5):
+    def __init__(self):
         super().__init__()
 
-        self.α = α
+        self.α = 0.05
     
     # (s1*...*)s-1
     def forward(self, a, b):
@@ -79,66 +79,83 @@ class NormLerp(torch.nn.Module):
         super().__init__()
 
         self.d = d
-        self.α = torch.nn.Parameter(torch.full((d,), 0.5))    
+        
+        self.α_init = 1
+        self.α_scale = 1/sqrt(d)
+        α = torch.full((d,), self.α_scale)
+        self.α = torch.nn.Parameter(α)
 
     # (s1*...*)s-1
     def forward(self, a, b):
-        lerp = a + self.α*(b-a)
+        α = (self.α_init/self.α_scale)*self.α
+        lerp = a + α*(b-a)
         
         return sphere_norm(lerp)
 
 # Sec. 2.3.2 of https://arxiv.org/abs/2410.01131
 class NormMHSA(torch.nn.Module):
-    # Remember that d_q=d_k. Moreover, assume that d_x=d_q=d_v:=d
-    def __init__(self, heads, d_head, is_causal):
+    def __init__(self, heads, d_head):
         super().__init__()
 
         self.heads = heads
         self.d_head = d_head
         self.d = heads * d_head
-        self.is_causal = is_causal
-
-        # We fuse Q, K and V (and different heads) for better parallelization, as well as less code
-        self.Wqkv = torch.nn.Linear(self.d, 3*self.d, False)
-
-        self.sqk = torch.nn.Parameter((heads, d_head))
+        self.scale = sqrt(d_head)
         
-        # DO NOT FORGET THE OUTPUT PROJECTION
-        self.Wo = torch.nn.Linear(self.d, self.d, False)
+        # Packing QKV gives negligible (~1%) speed gains, while not allowing GQA, hurting code clarity and having side effects with μP
+        self.lq = torch.nn.Linear(self.d, self.d, bias=False)
+        self.lk = torch.nn.Linear(self.d, self.d, bias=False)
+        self.lv = torch.nn.Linear(self.d, self.d, bias=False)
+        
+        self.sqk_init = 1
+        self.sqk_scale = 1/sqrt(d_head)
+        sqk = torch.full((heads, d_head), self.sqk_scale)
+        self.sqk = torch.nn.Parameter(sqk)
+        
+        self.lo = torch.nn.Linear(self.d, self.d, bias=False)
 
     # (batches*)context*d
-    def forward(self, X):
-        # (batches*)context*(3d)
-        QKV = self.Wqkv(X)
-
-        # (batches*)context*3*heads*d_head
-        QKV = QKV.unflatten(dim=-1, sizes=(3, self.heads, self.d_head))
-        # (batches*)3*heads*context*d_head
-        QKV = QKV.movedim(-4,-2)
-        # (batches*)2*heads*context*d_head, (batches*)heads*context*d_head
-        QK, V = QKV[...,:1,:,:,:], QKV[...,2,:,:,:]
-
-        QK = self.sqk.unsqueeze(1) * sphere_norm(QK)
-        Q, K = QK[...,0,:,:,:], QK[...,1,:,:,:]
-
-        # In the original paper, V is NOT normalized
-
-        # Attention scale is handled by sqk
-        # (batches*)heads*context*d_head
-        pos = transformer.get_pos("rot", X.shape[-2], X.shape[-1]):
-        Q_ = transformer.apply_pos("rot", Q, pos): 
-        K_ = transformer.apply_pos("rot", K, pos): 
-        Y = torch.nn.functional.scaled_dot_product_attention(Q_, K_, V, is_causal=self.is_causal, scale=1)
-        # (batches*)context*heads*d_head
-        Y = torch.movedim(Y, source=-3, destination=-2)
+    def forward(self, X, causal=None, rope=None, swa=None, return_A=False, backend="flash"):
         # (batches*)context*d
-        Y = torch.flatten(Y, start_dim=-2, end_dim=-1)
+        Q = self.lq(X)
+        K = self.lk(X)
+        V = self.lv(X)
 
-        # In the original paper, Y is NOT normalized
+        # (batches*)context*heads*d_head
+        Q = Q.unflatten(dim=-1, sizes=(self.heads, self.d_head))
+        K = K.unflatten(dim=-1, sizes=(self.heads, self.d_head))
+        V = V.unflatten(dim=-1, sizes=(self.heads, self.d_head))
 
-        Y = self.Wo(Y)
+        # (batches*)heads*context*d_head
+        Q = Q.movedim(-3,-2)
+        K = K.movedim(-3,-2)
+        V = V.movedim(-3,-2)
+    
+        Q = transformer.apply_rope(Q,rope.to(Q.dtype))
+        K = transformer.apply_rope(K,rope.to(K.dtype))
 
-        return Y
+        # Normalize after RoPE
+        sqk = (self.sqk_init/self.sqk_scale)*self.sqk
+        Q = sqk.unsqueeze(1).to(Q.dtype) * sphere_norm(Q).to(Q.dtype)
+        K = sqk.unsqueeze(1).to(K.dtype) * sphere_norm(K).to(K.dtype)
+        # In the original paper, V is NOT normalized
+        
+        # (batches*)heads*context*d_head
+        if not return_A:
+            Y = transformer.sdpa_wrapper(Q, K, V, causal, swa=swa, scale=self.scale, return_A=return_A, backend=backend)
+        else:
+            Y, A__, A_, A = transformer.sdpa_wrapper(Q, K, V, causal, swa=swa, scale=self.scale, return_A=return_A, backend=backend)
+        # (batches*)context*heads*d_head
+        Y = Y.movedim(-3,-2)
+        # (batches*)context*d
+        Y = Y.flatten(-2,-1)
+
+        Y = self.lo(Y)
+        
+        if not return_A:
+            return Y
+        else:
+            return Y, A__, A_, A
 
 class NormGLU(torch.nn.Module):
     def __init__(self, d0, d1):
@@ -147,16 +164,24 @@ class NormGLU(torch.nn.Module):
         self.d0 = d0
         self.d1 = d1
         
-        self.Wv = torch.nn.Linear(d0, d1, False)
-        self.sv = torch.nn.Parameter()
+        self.Wv = torch.nn.Linear(d0, d1, bias=False)
+        self.sv_init = 1.0
+        self.sv_scale = 1.0
+        sv = torch.full((self.d1,), self.sv_scale)
+        self.sv = torch.nn.Parameter(sv)
 
-        self.Wu = torch.nn.Linear(d0, d1, False)
-        self.su = torch.nn.Parameter()
+        self.Wu = torch.nn.Linear(d0, d1, bias=False)
+        self.su_init = 1.0
+        self.su_scale = 1.0
+        su = torch.full((self.d1,), self.su_scale)
+        self.su = torch.nn.Parameter(su)
 
     def forward(self, x):
-        v = sqrt(self.d0) * self.sv * self.Wv(x)
-
-        u = self.su * self.Wu(x)
+        sv = (self.sv_init/self.sv_scale)*self.sv
+        v = sqrt(self.d0) * sv * self.Wv(x)
+        
+        su = (self.su_init/self.su_scale)*self.su
+        u = su * self.Wu(x)
 
         y = torch.nn.functional.silu(v) * u
 
@@ -172,7 +197,7 @@ class NormMLP2L(torch.nn.Module):
 
         self.d1_ = (2*d1)//3
         self.l1 = NormGLU(d0, self.d1_)
-        self.l2 = torch.nn.Linear(self.d1_, d2, bias)
+        self.l2 = torch.nn.Linear(self.d1_, d2, bias=False)
 
     def forward(self, x):
         # In the original paper, a1 is NOT normalized
@@ -183,100 +208,148 @@ class NormMLP2L(torch.nn.Module):
         return y
 
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, is_causal, exp_factor=4, interp="lerp"):
+    def __init__(self, heads, d_head, exp_factor=4, interp="lerp"):
         super().__init__()
 
         self.heads = heads
         self.d_head = d_head
         self.d = heads * d_head
-        self.is_causal = is_causal
         self.exp_factor = exp_factor
         self.d_hidden = exp_factor*self.d
         self.interp = interp
-
-        self.norm_mhsa = NormMHSA(heads, d_head, is_causal)
+        
+        self.norm_mhsa = NormMHSA(heads, d_head)
         if interp=="slerp":
-            self.res1 = Slerp()
-            self.res2 = Slerp()
+            self.interp1 = Slerp()
+            self.interp2 = Slerp()
         elif interp=="lerp":
-            self.res1 = NormLerp(self.d)
-            self.res2 = NormLerp(self.d)
-        self.norm_mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
+            self.interp1 = NormLerp(self.d)
+            self.interp2 = NormLerp(self.d)
+        self.norm_mlp = NormMLP2L(self.d, self.d_hidden, self.d)
 
-    def forward(self, X):
-        HA = sphere_norm(self.norm_mhsa(X))
-        H = self.res1(X, HA)
-
+    def forward(self, X, causal=None, rope=None, swa=None, return_A=False, backend="flash"):
+        if not return_A:
+            HA = sphere_norm(self.norm_mhsa(X, causal, rope, swa, return_A, backend))
+        else:
+            HA, A__, A_, A = sphere_norm(self.norm_mhsa(X, causal, rope, swa, return_A, backend))
+        H = self.interp1(X, HA)
+        
         HM = sphere_norm(self.norm_mlp(H))
-        H = self.res2(H, HM)
+        H = self.interp2(H, HM)
 
-        return H   
-
-class EncBlock(Block):
-    def __init__(self, heads, d_head, exp_factor=4, interp="lerp"):
-        super().__init__(heads, d_head, False, exp_factor, interp)
-
-class DecBlock(Block):
-    def __init__(self, heads, d_head, exp_factor=4, interp="lerp"):
-        super().__init__(heads, d_head, True, exp_factor, interp)
+        if not return_A:
+            return H
+        else:
+            return H, A__, A_, A
 
 class nGPT(torch.nn.Module):
-    def __init__(self, vocab_size=50257, num_blocks=6, heads=8, d_head=4, exp_factor=4, max_context=128, all_pos=False, interp="lerp"):
+    def __init__(self, vocab_size=50304, num_blocks=12, interp="lerp", heads=12, d_head=64, is_causal=True, window=None, backend="flash", exp_factor=4, std=0.02, test=False):
         super().__init__()
 
         self.vocab_size = vocab_size
         self.num_blocks = num_blocks
+        self.interp = interp
         self.heads = heads
         self.d_head = d_head
         self.d = heads * d_head
+        self.is_causal = is_causal
+        self.window = window
+        self.backend = backend
         self.exp_factor = exp_factor
-        self.max_context = max_context
-        self.all_pos = all_pos
-        self.interp = interp
 
         self.Ein = torch.nn.Embedding(vocab_size, self.d)
-
-        self.blocks = torch.nn.Sequential(*[DecBlock(heads, d_head, exp_factor, interp) for _ in range(num_blocks)])
-
+        
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, exp_factor, interp) for _ in range(num_blocks)])
+        
         self.Eout = torch.nn.Linear(self.d, vocab_size, bias=False)
         
-        self.sz = torch.nn.Parameter()
+        self.sz_init = 1
+        self.sz_scale = 1/sqrt(self.d)
+        sz = torch.full((vocab_size,), self.sz_scale)
+        self.sz = torch.nn.Parameter(sz)
+
+        self.init(std, test)
+
+    def init(self, std=0.02, test=False):
+        if test: print("\x1b[1m%36.36s %8.8s %8.8s %8.8s\x1b[0m" % ("parameter_name", "suffix", "mean", "std"))
+        for parameter_name, parameter in self.named_parameters():
+            parent_name, _, suffix = parameter_name.rpartition(".")
+            parent = self.get_submodule(parent_name)
+            
+            if suffix=="weight":
+                torch.nn.init.normal_(parameter, 0, std)
+            
+            if test:
+                print("%36.36s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, suffix, "%f" % parameter.mean(), "%f" % parameter.std()))
 
     # (batches*)context
-    def forward(self, ids):
+    def forward(self, ids, return_A=False, return_emb=False):
         context = ids.shape[-1]
 
+        if return_A:
+            # (batches*)num_blocks*heads*context*context
+            A__ = torch.empty(*ids.shape[:-1], self.num_blocks, self.heads, context, context)
+            A_ = torch.empty_like(A__)
+            A = torch.empty_like(A__)
+        
         # (batches*)context*d
         X = self.Ein(ids)
 
+        if return_emb:
+            # (batches*)(num_blocks+1)*context*d
+            embeddings = torch.empty(*ids.shape[:-1], self.num_blocks+1, context, self.d)
+            embeddings[...,0,:,:] = X
+        
+        # Recompute in every batch in case context changes
+        if self.is_causal:
+            if self.backend=="pytorch":
+                causal = transformer.get_causal(context).to(ids.device)
+            elif self.backend=="flash":
+                causal = True
+            elif self.backend=="flex":
+                causal = causal_mod
+            elif self.backend=="cudnn":
+                # right_bound
+                causal = 0
+        else: causal = None
+
+        rope = transformer.get_rope(context, self.d_head).to(ids.device)
+
+        if self.window is not None:
+            if self.backend=="pytorch":
+                swa = transformer.get_swa(context, self.window).to(ids.device)
+            elif self.backend=="flash":
+                swa = (self.window, self.window)
+            elif self.backend=="flex":
+                swa = swa_mod
+            elif self.backend=="cudnn":
+                # left_bound
+                swa = self.window
+        else: swa = None
+
         H = X
-        for block in self.blocks:
-            H_ = block(H)
-            Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
+        for i, block in enumerate(self.blocks):
+            if not return_A:
+                H = block(H, causal, rope, swa, return_A, self.backend)
+            else:
+                H, A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(H, causal, rope, swa, return_A, self.backend)
+
+            if return_emb:
+                embeddings[...,i+1,:,:] = H
 
         # (batches*)context*vocab_size
         Z = self.Eout(H)
+        
+        sz = (self.sz_init/self.sz_scale)*self.sz
+        Z = sz * Z
 
-        Z = self.sz * Z
-
-        return Z
-
-    # # (batches*)context
-    # def forward(self, ids):
-    #     context = ids.shape[-1]
-    #
-    #     # (batches*)context*d
-    #     X = apply_pos(self.pos_type, self.emb(ids), self.pos[...,:context,:])
-    #     X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
-    #
-    #     Y = X_
-    #     for block in self.blocks:
-    #         Y_ = block(Y)
-    #         Y = apply_pos(self.pos_type, Y_, self.pos[...,:context,:]) if self.all_pos else Y_
-    #
-    #     Y__ = self.norm(Y_)
-    #
-    #     # (batches*)context*vocab_size
-    #     Z = self.linear(Y__)
-    #
-    #     return Z
+        if not return_A:
+            if not return_emb:
+                return Z
+            else:
+                return Z, embeddings
+        else:
+            if not return_emb:
+                return Z, A__, A_, A
+            else:
+                return Z, A__, A_, A, embeddings

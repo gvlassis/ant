@@ -7,7 +7,7 @@ def get_formatwarning(message, category, filename, lineno, line=None):
     return f"\x1b[90;3m[{category.__name__}] {os.path.basename(filename)} ({lineno}L): {message}\x1b[0m\n"
 warnings.formatwarning = get_formatwarning
 
-PARAMETRIZATIONS=["sp", "ntk", "mup", "mf"]
+PARAMETRIZATIONS=["np", "sp", "ntk", "mup", "mf"]
 OPTIMIZERS=["sgd","adam"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
@@ -253,43 +253,46 @@ def get_parameter_type(parameter, suffix, parent):
 # model: target
 # model_: A scaled (up or down) version of model0
 def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test, warning):
-    layers = get_layers(model0, model_, warning)
-    
-    params = []
-    
-    if test: print("\x1b[1m%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % ("parameter_name", "layer", "parameter_type", "fanin0", "fanin", "fanout0", "fanout", "mean", "B0", "B1", "B2", "std", "C0", "C1", "C2", "lr"))
-    for parameter_name, parameter in model.named_parameters():
-        parameter0 = model0.get_parameter(parameter_name)
+    if parametrization=="np":
+        params = [{"params": model.parameters(), "lr": k_input}]
 
-        parent_name, _, suffix = parameter_name.rpartition(".")
-        parent = model.get_submodule(parent_name)
+    else:
+        layers = get_layers(model0, model_, warning)
         
-        layer = layers[parameter_name]
-
-        fanin0, fanout0 = get_fan(parameter0, suffix, parent)
-        fanin, fanout = get_fan(parameter, suffix, parent)
-
-        B1, B2, C1_sgd, C2_sgd, C1_adam, C2_adam = lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout)
-        if optimizer == "sgd":
-            C1 = C1_sgd
-            C2 = C2_sgd
-        elif optimizer == "adam":
-            C1 = C1_adam
-            C2 = C2_adam
+        params = []
         
-        parameter_type = get_parameter_type(parameter, suffix, parent)
-        
-        μ, B0, C0 = lookup_table2(fanin, parameter_type, layer, c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+        if test: print("\x1b[1m%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % ("parameter_name", "layer", "parameter_type", "fanin0", "fanin", "fanout0", "fanout", "mean", "B0", "B1", "B2", "std", "C0", "C1", "C2", "lr"))
+        for parameter_name, parameter in model.named_parameters():
+            parameter0 = model0.get_parameter(parameter_name)
 
-        mean = μ
-        std = B0*B1*B2
-        torch.nn.init.normal_(parameter, mean, std)
+            parent_name, _, suffix = parameter_name.rpartition(".")
+            parent = model.get_submodule(parent_name)
+            
+            layer = layers[parameter_name]
 
-        lr = C0*C1*C2
-        params.append({"params": parameter, "lr": lr})
+            fanin0, fanout0 = get_fan(parameter0, suffix, parent)
+            fanin, fanout = get_fan(parameter, suffix, parent)
 
-        if test:
-            print("%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, layer, parameter_type, fanin0, fanin, fanout0, fanout, mean, "%f" % B0, "%f" % B1, "%f" % B2, "%f" % std, "%f" % C0, "%f" % C1, "%f" % C2, "%f" % lr))
+            B1, B2, C1_sgd, C2_sgd, C1_adam, C2_adam = lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout)
+            if optimizer == "sgd":
+                C1 = C1_sgd
+                C2 = C2_sgd
+            elif optimizer == "adam":
+                C1 = C1_adam
+                C2 = C2_adam
+            
+            parameter_type = get_parameter_type(parameter, suffix, parent)
+            
+            μ, B0, C0 = lookup_table2(fanin, parameter_type, layer, c_input, c_hidden, c_output, k_input, k_hidden, k_output)
+
+            mean = μ
+            std = B0*B1*B2
+            torch.nn.init.normal_(parameter, mean, std)
+
+            lr = C0*C1*C2
+            params.append({"params": parameter, "lr": lr})
+
+            if test: print("%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, layer, parameter_type, fanin0, fanin, fanout0, fanout, "%f" % mean, "%f" % B0, "%f" % B1, "%f" % B2, "%f" % std, "%f" % C0, "%f" % C1, "%f" % C2, "%f" % lr))
 
     if optimizer=="sgd":
         # fused=True is negligibly faster
