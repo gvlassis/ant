@@ -6,9 +6,10 @@ import warnings
 def get_formatwarning(message, category, filename, lineno, line=None):
     return f"\x1b[90;3m[{category.__name__}] {os.path.basename(filename)} ({lineno}L): {message}\x1b[0m\n"
 warnings.formatwarning = get_formatwarning
+import pytorch_optimizer
 
-PARAMETRIZATIONS=["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS=["sgd","adam"]
+PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
+OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "lion", "sophia", "sfadam", "soap", "muon"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -300,3 +301,17 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
     elif optimizer=="adam":
         # fused=True is negligibly faster
         return torch.optim.AdamW(params, betas=betas, weight_decay=weight_decay, fused=True)
+    elif optimizer=="psgd":
+        return pytorch_optimizer.Kron(params, memory_save_mode="all_diag")
+    elif optimizer=="shampoo":
+        return pytorch_optimizer.ScalableShampoo(params)
+    elif optimizer=="lion":
+        return pytorch_optimizer.Lion(params)
+    elif optimizer=="sophia":
+        return pytorch_optimizer.SophiaH(params)
+    elif optimizer=="sfadam":
+        return pytorch_optimizer.ScheduleFreeAdamW(params)
+    elif optimizer=="soap":
+        return pytorch_optimizer.SOAP(params)
+    elif optimizer=="muon":
+        return pytorch_optimizer.Muon(params)
