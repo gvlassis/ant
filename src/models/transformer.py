@@ -15,7 +15,7 @@ def get_causal(context):
 
     return causal
 
-def get_sinusoidal(context, d, base=10_000):
+def get_sinusoidal(context, d, base=1024):
     # [pos=0, pos=1, ...]
     poss = torch.arange(0., context)
     # [i=0, i=1, ...]
@@ -34,7 +34,7 @@ def get_sinusoidal(context, d, base=10_000):
 
     return sinusoidal
 
-def get_rope(context, d, base=10_000):
+def get_rope(context, d, base=1024):
     # [m=0, m=1, ...]
     ms = torch.arange(0., context)
     # [i=0, i=1, ...]
@@ -141,15 +141,21 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
     context = Q.shape[-2]
     d_head = Q.shape[-1]
 
-    # CAUTION: FlashAttention expects batches*context*heads/groups*d_head
+    # CAUTION: FlashAttention2 expects batches*context*heads/groups*d_head
     Q = Q.movedim(-3,-2).reshape(-1,context,heads,d_head)
     K = K.movedim(-3,-2).reshape(-1,context,groups,d_head)
     V = V.movedim(-3,-2).reshape(-1,context,groups,d_head)
     
     if swa is None:
         swa = (-1,-1)
-
-    Y = flash_attn.flash_attn_func(Q, K, V, causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
+    
+    # FlashAttention2 only supports BF16 and FP16
+    if Q.dtype in [torch.bfloat16, torch.float16]:
+        dtype = Q.dtype
+    else: 
+        dtype = torch.bfloat16
+    Y = flash_attn.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
+    Y = Y.to(Q.dtype)
     
     # Restore the shape to: (batches*)heads*context*d_head
     Y = Y.movedim(-3,-2).squeeze(0)
@@ -275,8 +281,8 @@ class MHSA(torch.nn.Module):
         V = V.movedim(-3,-2)
         
         if rope is not None:
-            Q = apply_rope(Q,rope.to(Q.dtype))
-            K = apply_rope(K,rope.to(K.dtype))
+            Q = apply_rope(Q,rope)
+            K = apply_rope(K,rope)
 
         # (batches*)heads*context*d_head
         if not return_A:

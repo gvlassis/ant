@@ -32,11 +32,9 @@ class MLP2L(torch.nn.Module):
 
         if l1_type=="linear":
             self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
-            self.l2 = torch.nn.Linear(d1, d2, bias)
         elif l1_type=="glu":
-            self.d1_ = (2*d1)//3
-            self.l1 = GLU(d0, self.d1_, bias, act)
-            self.l2 = torch.nn.Linear(self.d1_, d2, bias)
+            self.l1 = GLU(d0, d1, bias, act)
+        self.l2 = torch.nn.Linear(d1, d2, bias)
 
     def forward(self, x):
         a1 = self.l1(x)

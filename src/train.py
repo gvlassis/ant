@@ -13,11 +13,11 @@ import contextlib
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
-parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=False)
+parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=True)
 parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=False)
 parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
-parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=False)
+parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=True)
 parser.add_argument("--warning", type=utils.str_to_bool, default=True)
 parser.add_argument("--verbose", help="If True, print a pretty log in the stdout. If False, only print the final val_loss. Useful for piping.", type=utils.str_to_bool, default=True)
 parser.add_argument("--extra_freq", help="Every how many batches to perform the extra evaluations", type=int, default=utils.INF)
@@ -32,36 +32,36 @@ parser.add_argument("--ppl", help="As an extra, evaluate the train and validatio
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
 parser.add_argument("--vocab_size", type=int, default=50304)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
-parser.add_argument("--parametrization", help="(a)bc parametrization, as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522). np (No Parametrization) means that the initialization is handled internally by the model.", choices=models.parametrizations.PARAMETRIZATIONS, default="mup")
+parser.add_argument("--parametrization", help="(a)bc parametrization, as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522). np (No Parametrization) means that the initialization is handled internally by the model.", choices=models.parametrizations.PARAMETRIZATIONS, default="np")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
-parser.add_argument("--pos_type", help="Positional embeddings", choices=models.transformer.POS_TYPES, default="learned")
+parser.add_argument("--pos_type", help="Positional embeddings", choices=models.transformer.POS_TYPES, default="rope")
 
-parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=True)
+parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=False)
 parser.add_argument("--c_input", type=float, default=0.02)
-parser.add_argument("--c_hidden", type=float, default=0.4)
-parser.add_argument("--c_output", type=float, default=0.4)
+parser.add_argument("--c_hidden", type=float, default=0.5)
+parser.add_argument("--c_output", type=float, default=0.5)
 parser.add_argument("--optimizer", choices=models.parametrizations.OPTIMIZERS, default="adam")
 parser.add_argument("--k_input", type=float, default=1e-3)
-parser.add_argument("--k_hidden", type=float, default=6e-3)
-parser.add_argument("--k_output", type=float, default=6e-3)
+parser.add_argument("--k_hidden", type=float, default=1e-3)
+parser.add_argument("--k_output", type=float, default=1e-3)
 parser.add_argument("--scheduler", help="Learning rate schedule", choices=utils.SCHEDULERS, default="trapezoidal")
-parser.add_argument("--momentum", type=float, default=0.9)
+parser.add_argument("--momentum", type=float, default=0)
 parser.add_argument("--nesterov", help="Use Nesterov momentum", type=utils.str_to_bool, default=False)
-parser.add_argument("--β1", type=float, default=0.85)
+parser.add_argument("--β1", type=float, default=0.9)
 parser.add_argument("--β2", type=float, default=0.95)
 parser.add_argument("--weight_decay", type=float, default=0)
 parser.add_argument("--label_smoothing", type=float, default=0)
 parser.add_argument("--pre_norm", help="Normalize the weights on the unit hypersphere after initialization", type=utils.str_to_bool, default=False)
 parser.add_argument("--post_norm", help="Normalize the weights on the unit hypersphere after each training step", type=utils.str_to_bool, default=False)
 
-parser.add_argument("--batch_size", help="Total batch size, over all GPUs and accumulations, for one gradient update", type=int, default=1024)
+parser.add_argument("--batch_size", help="Total batch size, over all GPUs and accumulations, for one gradient update", type=int, default=512)
 parser.add_argument("--micro_batch_size", help="Batch size that fits in every GPU", type=int, default=32)
 parser.add_argument("--context", type=int, default=1024)
-parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=100_000)
-parser.add_argument("--thresh", help="Artificially stop training when the validation loss first crosses this threshold", type=float, default=0)
-parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=100)
-parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be evaluated", type=int, default=500)
+parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=10_000)
+parser.add_argument("--thresh", help="Keep the model that first crosses this threshold in SUBPATH_thresh.pt", type=float, default=0)
+parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
+parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be evaluated", type=int, default=100)
 
 parser.add_argument("--model_device_index", help="CUDA device that stores the model", type=int, default=0)
 parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Device type that preloads the dataset", default="cpu")
@@ -98,8 +98,10 @@ log_path = args.SUBPATH+".dat"
 model_path = args.SUBPATH+".pt"
 graph_path = args.SUBPATH+".pdf"
 extra_path = args.SUBPATH+"_extra.dat"
+thresh_path = args.SUBPATH+"_thresh.pt"
 
 extra = False if args.extra_freq==utils.INF else True
+thresh_crossed = False
 
 if args.decoupling:
     c_input = args.c_input
@@ -238,9 +240,14 @@ for train_batch in range(args.train_batches):
         if args.verbose: print("%s %s %s %s %s" % (train_batch_decorated, lr0_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
         with open(log_path,"a") as file:
             file.write("%d %f %f %f %d %s\n" % (train_batch, scheduler.get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
-
-        if val_loss < args.thresh:
-            terminate = torch.tensor(True).to(model_device)
+        
+        if (not thresh_crossed) and (val_loss < args.thresh):
+            if torchelastic:
+                torch.save(model.module.state_dict(), thresh_path)
+            else:
+                torch.save(model.state_dict(), thresh_path)
+            
+            thresh_crossed = True
     
     if extra and (train_batch % args.extra_freq == 0 or train_batch == args.train_batches-1) and master:
         print("━"*70)

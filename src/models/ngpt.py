@@ -80,7 +80,7 @@ class NormLerp(torch.nn.Module):
 
         self.d = d
         
-        self.α_init = 1
+        self.α_init = 0.05
         self.α_scale = 1/sqrt(d)
         α = torch.full((d,), self.α_scale)
         self.α = torch.nn.Parameter(α)
@@ -131,13 +131,13 @@ class NormMHSA(torch.nn.Module):
         K = K.movedim(-3,-2)
         V = V.movedim(-3,-2)
     
-        Q = transformer.apply_rope(Q,rope.to(Q.dtype))
-        K = transformer.apply_rope(K,rope.to(K.dtype))
+        Q = transformer.apply_rope(Q,rope)
+        K = transformer.apply_rope(K,rope)
 
         # Normalize after RoPE
         sqk = (self.sqk_init/self.sqk_scale)*self.sqk
-        Q = sqk.unsqueeze(1).to(Q.dtype) * sphere_norm(Q).to(Q.dtype)
-        K = sqk.unsqueeze(1).to(K.dtype) * sphere_norm(K).to(K.dtype)
+        Q = sqk.unsqueeze(1) * sphere_norm(Q)
+        K = sqk.unsqueeze(1) * sphere_norm(K)
         # In the original paper, V is NOT normalized
         
         # (batches*)heads*context*d_head
@@ -164,13 +164,13 @@ class NormGLU(torch.nn.Module):
         self.d0 = d0
         self.d1 = d1
         
-        self.Wv = torch.nn.Linear(d0, d1, bias=False)
+        self.lv = torch.nn.Linear(d0, d1, bias=False)
         self.sv_init = 1.0
         self.sv_scale = 1.0
         sv = torch.full((self.d1,), self.sv_scale)
         self.sv = torch.nn.Parameter(sv)
 
-        self.Wu = torch.nn.Linear(d0, d1, bias=False)
+        self.lu = torch.nn.Linear(d0, d1, bias=False)
         self.su_init = 1.0
         self.su_scale = 1.0
         su = torch.full((self.d1,), self.su_scale)
@@ -178,10 +178,10 @@ class NormGLU(torch.nn.Module):
 
     def forward(self, x):
         sv = (self.sv_init/self.sv_scale)*self.sv
-        v = sqrt(self.d0) * sv * self.Wv(x)
+        v = sqrt(self.d0) * sv * self.lv(x)
         
         su = (self.su_init/self.su_scale)*self.su
-        u = su * self.Wu(x)
+        u = su * self.lu(x)
 
         y = torch.nn.functional.silu(v) * u
 
@@ -195,9 +195,8 @@ class NormMLP2L(torch.nn.Module):
         self.d1 = d1
         self.d2 = d2
 
-        self.d1_ = (2*d1)//3
-        self.l1 = NormGLU(d0, self.d1_)
-        self.l2 = torch.nn.Linear(self.d1_, d2, bias=False)
+        self.l1 = NormGLU(d0, d1)
+        self.l2 = torch.nn.Linear(d1, d2, bias=False)
 
     def forward(self, x):
         # In the original paper, a1 is NOT normalized
