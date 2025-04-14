@@ -2,16 +2,12 @@ import torch
 from torch import arccos, sin
 import matplotlib.pyplot
 from math import sqrt
+from . import mlp
 from . import transformer
-
-# Normalizes on the hypersphere along dim
-# (s1*...*)s-1
-def sphere_norm(X, dim=-1):
-    return torch.nn.functional.normalize(X, dim=dim)
 
 # Samples from uniform distribution on the hypersphere
 def rands(*size):
-    return sphere_norm(torch.randn(*size))
+    return mlp.sphere_norm(torch.randn(*size))
 
 def test_rands(samples=50):
     xy = rands((samples, 2))
@@ -90,7 +86,7 @@ class NormLerp(torch.nn.Module):
         α = (self.α_init/self.α_scale)*self.α
         lerp = a + α*(b-a)
         
-        return sphere_norm(lerp)
+        return mlp.sphere_norm(lerp)
 
 # Sec. 2.3.2 of https://arxiv.org/abs/2410.01131
 class NormMHSA(torch.nn.Module):
@@ -136,8 +132,8 @@ class NormMHSA(torch.nn.Module):
 
         # Normalize after RoPE
         sqk = (self.sqk_init/self.sqk_scale)*self.sqk
-        Q = sqk.unsqueeze(1) * sphere_norm(Q)
-        K = sqk.unsqueeze(1) * sphere_norm(K)
+        Q = sqk.unsqueeze(1) * mlp.sphere_norm(Q)
+        K = sqk.unsqueeze(1) * mlp.sphere_norm(K)
         # In the original paper, V is NOT normalized
         
         # (batches*)heads*context*d_head
@@ -228,12 +224,12 @@ class Block(torch.nn.Module):
 
     def forward(self, X, causal=None, rope=None, swa=None, return_A=False, backend="flash"):
         if not return_A:
-            HA = sphere_norm(self.norm_mhsa(X, causal, rope, swa, return_A, backend))
+            HA = mlp.sphere_norm(self.norm_mhsa(X, causal, rope, swa, return_A, backend))
         else:
-            HA, A__, A_, A = sphere_norm(self.norm_mhsa(X, causal, rope, swa, return_A, backend))
+            HA, A__, A_, A = mlp.sphere_norm(self.norm_mhsa(X, causal, rope, swa, return_A, backend))
         H = self.interp1(X, HA)
         
-        HM = sphere_norm(self.norm_mlp(H))
+        HM = mlp.sphere_norm(self.norm_mlp(H))
         H = self.interp2(H, HM)
 
         if not return_A:

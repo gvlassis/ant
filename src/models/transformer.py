@@ -326,6 +326,10 @@ class Block(torch.nn.Module):
         elif norm_type=="rms":
             self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
             self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+        elif norm_type=="sphere":
+            self.norm1 = mlp.SphereNorm(dim=-1)
+            self.norm2 = mlp.SphereNorm(dim=-1)
+
         self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
 
     def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash"):
@@ -346,7 +350,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="learned", max_context=128, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear"):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="learned", max_context=128, norm_type="rms", bias=False, act=torch.nn.GELU(), l1_type="linear"):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -380,6 +384,8 @@ class Transformer(torch.nn.Module):
             self.norm = torch.nn.LayerNorm(self.d, bias=bias)
         elif norm_type=="rms":
             self.norm = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+        elif norm_type=="sphere":
+            self.norm = mlp.SphereNorm(dim=-1)
         
         self.linear = torch.nn.Linear(self.d, vocab_size, bias=False)
 

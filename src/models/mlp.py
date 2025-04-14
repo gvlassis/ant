@@ -1,5 +1,33 @@
 import torch
 
+# Normalizes on the hypersphere along dim
+# (s1*...*)s-1
+def sphere_norm(X, dim=-1):
+    return torch.nn.functional.normalize(X, dim=dim)
+
+class SphereNorm(torch.nn.Module):
+    def __init__(self, dim=-1):
+        super().__init__()
+
+        self.dim = dim
+
+    def forward(self, X):
+        Y = sphere_norm(X, dim=self.dim)
+
+        return Y
+
+class ReLU2(torch.nn.Module):
+    def forward(self, x):
+        y = torch.nn.functional.relu(x)**2
+
+        return y
+
+class Abs(torch.nn.Module):
+    def forward(self, x):
+        y = x.abs()
+
+        return y
+
 class GLU(torch.nn.Module):
     def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU()):
         super().__init__()

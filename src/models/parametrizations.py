@@ -7,9 +7,10 @@ def get_formatwarning(message, category, filename, lineno, line=None):
     return f"\x1b[90;3m[{category.__name__}] {os.path.basename(filename)} ({lineno}L): {message}\x1b[0m\n"
 warnings.formatwarning = get_formatwarning
 import pytorch_optimizer
+import heavyball
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "lion", "sophia", "sfadam", "soap", "muon"]
+OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "lion", "sophia", "sfadam", "soap", "muon", "scion", "ademamix", "adopt", "mars", "cautious", "grams"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -254,7 +255,7 @@ def get_parameter_type(parameter, suffix, parent):
 # model: target
 # model_: A scaled (up or down) version of model0
 def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test, warning):
-    if parametrization=="np":
+    if parametrization == "np":
         params = [{"params": model.parameters(), "lr": k_input}]
 
     else:
@@ -314,4 +315,23 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
     elif optimizer=="soap":
         return pytorch_optimizer.SOAP(params)
     elif optimizer=="muon":
-        return pytorch_optimizer.Muon(params)
+        params = model.parameters()
+        adamw_params = [*model.emb.parameters(), *model.linear.parameters()]
+        # Has autodetection for 1D
+        return pytorch_optimizer.Muon(params, lr=k_input, momentum=0.95, weight_decay=weight_decay, betas=betas, nesterov=True, adamw_params=adamw_params, adamw_lr=3e-4)
+    elif optimizer=="scion":
+        # scale=radius/ρ (lr=γ*ρ)
+        optim_groups = [{"params": model.emb.parameters(), "norm_type": 6, "norm_kwargs": {}, "scale": 3000},
+                        {"params": model.blocks.parameters(), "norm_type": 2, "norm_kwargs": {"steps": 5}, "scale": 50},
+                        {"params": model.linear.parameters(), "norm_type": 4, "norm_kwargs": {}, "scale": 3000}]
+        return pytorch_optimizer.SCION(params, lr=k_input, momentum=0.1)
+    elif optimizer=="ademamix":
+        return pytorch_optimizer.AdEMAMix(params, betas=(betas[0], betas[1], 0.98), weight_decay=weight_decay)
+    elif optimizer=="adopt":
+        return pytorch_optimizer.ADOPT(params, betas=betas, weight_decay=weight_decay)
+    elif optimizer=="mars":
+        return heavyball.ForeachAdamW(params, betas=betas, weight_decay=weight_decay, mars=True)
+    elif optimizer=="cautious":
+        return heavyball.ForeachAdamW(params, betas=betas, weight_decay=weight_decay, caution=True)
+    elif optimizer=="grams":
+        return pytorch_optimizer.Grams(params, betas=betas, weight_decay=weight_decay)
