@@ -350,7 +350,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="learned", max_context=128, norm_type="rms", bias=False, act=torch.nn.GELU(), l1_type="linear"):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms", bias=False, act=torch.nn.GELU(), l1_type="linear"):
         super().__init__()
 
         self.vocab_size = vocab_size

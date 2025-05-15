@@ -10,6 +10,9 @@ import torchview
 import logging
 torch._logging.set_logs(all=logging.ERROR)
 import contextlib
+import lm_eval
+import transformers
+import tokenmonster
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
@@ -28,6 +31,10 @@ parser.add_argument("--nmae", help="As an extra, evaluate the train and validati
 parser.add_argument("--r2", help="As an extra, evaluate the train and validation Coefficients of Determination", type=utils.str_to_bool, default=False)
 parser.add_argument("--acc", help="As an extra, evaluate the train and validation accuracies", type=utils.str_to_bool, default=False)
 parser.add_argument("--ppl", help="As an extra, evaluate the train and validation perplexities", type=utils.str_to_bool, default=False)
+parser.add_argument("--lambada", help="As an extra, evaluate the LAMBADA (OpenAI version) accuracy", type=utils.str_to_bool, default=False)
+parser.add_argument("--arc", help="As an extra, evaluate the ARC (easy) NORMALIZED accuracy", type=utils.str_to_bool, default=False)
+parser.add_argument("--hellaswag", help="As an extra, evaluate the HellaSwag NORMALIZED accuracy", type=utils.str_to_bool, default=False)
+parser.add_argument("--piqa", help="As an extra, evaluate the PIQA NORMALIZED accuracy", type=utils.str_to_bool, default=False)
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
 parser.add_argument("--vocab_size", type=int, default=50304)
@@ -68,6 +75,9 @@ parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Devi
 parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="bfloat16")
 parser.add_argument("--compile", help="Use torch.compile()", type=utils.str_to_bool, default=True)
 parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backend", choices=models.transformer.BACKENDS, default="flash")
+parser.add_argument("--tokenizer_type", choices=data.utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenizers")
+parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="gpt2")
+parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=50256)
 args=parser.parse_args()
 
 torchelastic = os.getenv("TORCHELASTIC_RUN_ID") != None
@@ -80,7 +90,7 @@ if torchelastic:
     RANK = int(os.getenv("RANK"))
     LOCAL_RANK = int(os.getenv("LOCAL_RANK"))
     
-    master = RANK == 0
+    master = (RANK == 0)
     
     model_device_index = LOCAL_RANK
 
@@ -101,6 +111,17 @@ extra_path = args.SUBPATH+"_extra.dat"
 thresh_path = args.SUBPATH+"_thresh.pt"
 
 extra = False if args.extra_freq==utils.INF else True
+
+lm_eval_tasks = []
+if args.lambada:
+    lm_eval_tasks.append("lambada_openai")
+if args.arc:
+    lm_eval_tasks.append("arc_easy")
+if args.hellaswag:
+    lm_eval_tasks.append("hellaswag")
+if args.piqa:
+    lm_eval_tasks.append("piqa")
+    
 thresh_crossed = False
 
 if args.decoupling:
@@ -130,7 +151,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, optimizer = models.utils_models.get_model_optimizer(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend)
+model, optimizers = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend)
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 model = model.to(model_device)
 if args.info:
@@ -159,8 +180,16 @@ if args.compile:
 else:
     get_loss = data.utils_data.get_loss
 
-scheduler = utils.get_scheduler(args.scheduler, optimizer, args.train_batches)
-if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
+schedulers = []
+for optimizer in optimizers:
+    scheduler = utils.get_scheduler(args.scheduler, optimizer, args.train_batches)
+    schedulers.append(scheduler)
+    if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
+
+if args.tokenizer_type=="tokenizers":
+    tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
+elif args.tokenizer_type=="tokenmonster":
+    tokenizer = tokenmonster.load_multiprocess_safe(args.tokenizer)
 
 if master:
     if args.verbose: print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
@@ -176,6 +205,11 @@ if master:
             if args.nmae: file.write(" train_nmae val_nmae")
             if args.r2: file.write(" train_r2 val_r2")
             if args.acc: file.write(" train_acc val_acc")
+            if args.ppl: file.write(" train_ppl val_ppl")
+            if args.lambada: file.write(" lambada")
+            if args.arc: file.write(" arc")
+            if args.hellaswag: file.write(" hellaswag")
+            if args.piqa: file.write(" piqa")
 
             file.write("\n")
 
@@ -213,7 +247,7 @@ for train_batch in range(args.train_batches):
     if (train_batch % args.update_freq == 0 or train_batch == args.train_batches-1) and master:
         train_batch_decorated = "%12.12s" % train_batch
 
-        lr0_decorated = "%12.12s" % ("%f" % scheduler.get_last_lr()[0])
+        lr0_decorated = "%12.12s" % ("%f" % schedulers[0].get_last_lr()[0])
         
         if train_loss < min_train_loss:
             min_train_loss = train_loss
@@ -239,7 +273,7 @@ for train_batch in range(args.train_batches):
 
         if args.verbose: print("%s %s %s %s %s" % (train_batch_decorated, lr0_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
         with open(log_path,"a") as file:
-            file.write("%d %f %f %f %d %s\n" % (train_batch, scheduler.get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
+            file.write("%d %f %f %f %d %s\n" % (train_batch, schedulers[0].get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
         
         if (not thresh_crossed) and (val_loss < args.thresh):
             if torchelastic:
@@ -318,16 +352,63 @@ for train_batch in range(args.train_batches):
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_ppl, val_ppl))
 
+        if lm_eval_tasks:
+            lm_eval_results = lm_eval.simple_evaluate(model = data.utils_data.LMEvalWrapper(args.tokenizer_type, tokenizer, args.eot_id, model, args.dtype),
+                                                      tasks = lm_eval_tasks,
+                                                      num_fewshot = 0,
+                                                      batch_size = 1, # Higher is not supported
+                                                      use_cache = None, # Do NOT cache results
+                                                      rewrite_requests_cache = True, # Dataset requests cache
+                                                      limit = None, # Total samples. Be careful, some datasets are very noisy and/or not even shuffled
+                                                      bootstrap_iters = 100, # Default=100_000, with bootstrap_iters=min(bootstrap_iters, 100)
+                                                      log_samples = False,
+                                                      verbosity = "ERROR",
+                                                      random_seed = None, # Do NOT fix random seed
+                                                      numpy_random_seed = None,
+                                                      torch_random_seed = None,
+                                                      fewshot_random_seed = None)
+
+        if args.lambada:
+            lambada = lm_eval_results["results"]["lambada_openai"]["acc,none"]*100
+            print("%12.12s: %6.6s%%" % ("lambada", "%.2f" % lambada))
+
+            with open(extra_path,"a") as file:
+                file.write(" %f" % lambada)
+
+        if args.arc:
+            arc = lm_eval_results["results"]["arc_easy"]["acc_norm,none"]*100
+            print("%12.12s: %6.6s%%" % ("arc", "%.2f" % arc))
+
+            with open(extra_path,"a") as file:
+                file.write(" %f" % arc)
+
+        if args.hellaswag:
+            hellaswag = lm_eval_results["results"]["hellaswag"]["acc_norm,none"]*100
+            print("%12.12s: %6.6s%%" % ("hellaswag", "%.2f" % hellaswag))
+
+            with open(extra_path,"a") as file:
+                file.write(" %f" % hellaswag)
+        
+        if args.piqa:
+            piqa = lm_eval_results["results"]["piqa"]["acc_norm,none"]*100
+            print("%12.12s: %6.6s%%" % ("piqa", "%.2f" % piqa))
+
+            with open(extra_path,"a") as file:
+                file.write(" %f" % piqa)
+
         print("━"*70)
 
         with open(extra_path,"a") as file:
             file.write("\n")
-
-    scaler.step(optimizer)
+    
+    for optimizer in optimizers:
+        scaler.step(optimizer)
     if args.post_norm: model = models.utils_models.weight_norm(model)
-    optimizer.zero_grad()
+    for optimizer in optimizers:
+        optimizer.zero_grad()
     scaler.update()
-    scheduler.step()
+    for scheduler in schedulers:
+        scheduler.step()
 
 if master and (not args.verbose): print("%f" % val_loss, end="")
 

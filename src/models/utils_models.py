@@ -10,7 +10,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_optimizer(vocab_size, family, parametrization, ζ, scale_type, pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning, backend):
+def get_model_optimizers(vocab_size, family, parametrization, ζ, scale_type, pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning, backend):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -68,9 +68,9 @@ def get_model_optimizer(vocab_size, family, parametrization, ζ, scale_type, pos
         model = ngpt.nGPT(vocab_size, num_blocks, heads=heads, d_head=ζ*d_head0, backend=backend, std=c_input, test=test_parametrization)
         model_ = None
 
-    optimizer = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, warning)
+    optimizers = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test_parametrization, warning)
 
-    return model, optimizer
+    return model, optimizers
 
 def weight_norm(model):
     for parameter_name, parameter in model.named_parameters():
