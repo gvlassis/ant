@@ -350,7 +350,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms", bias=False, act=torch.nn.GELU(), l1_type="linear"):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms", bias=False, act=torch.nn.GELU(), l1_type="linear", std=0.02, test=False, weight_tying=False):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -371,6 +371,7 @@ class Transformer(torch.nn.Module):
         self.bias = bias
         self.act = act
         self.l1_type = l1_type
+        self.weight_tying = weight_tying
 
         self.emb = torch.nn.Embedding(vocab_size, self.d)
         
@@ -388,6 +389,22 @@ class Transformer(torch.nn.Module):
             self.norm = mlp.SphereNorm(dim=-1)
         
         self.linear = torch.nn.Linear(self.d, vocab_size, bias=False)
+
+        if weight_tying: self.emb.weight = self.linear.weight
+        
+        self.init(std, test)
+
+    def init(self, std=0.02, test=False):
+        if test: print("\x1b[1m%36.36s %8.8s %8.8s %8.8s\x1b[0m" % ("parameter_name", "suffix", "mean", "std"))
+        for parameter_name, parameter in self.named_parameters():
+            parent_name, _, suffix = parameter_name.rpartition(".")
+            parent = self.get_submodule(parent_name)
+            
+            if suffix=="weight":
+                torch.nn.init.normal_(parameter, 0, std)
+            
+            if test:
+                print("%36.36s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, suffix, "%f" % parameter.mean(), "%f" % parameter.std()))
 
     # (batches*)context
     def forward(self, ids, return_A=False, return_emb=False):

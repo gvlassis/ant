@@ -329,13 +329,13 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
         output_params = [*model.linear.parameters()]
 
         optimizers = [torch.optim.AdamW(input_params, lr=k_input, betas=betas, weight_decay=weight_decay, fused=True),
-                      muon.Muon(hidden_params, lr=k_hidden, momentum=0.95),
+                      muon.Muon(hidden_params, lr=k_hidden, momentum=0.95, rank=0, world_size=1),
                       torch.optim.AdamW(output_params, lr=k_output, betas=betas, weight_decay=weight_decay, fused=True)]
 
     elif optimizer=="scion":
         # scale=radius/ρ (lr=γ*ρ)
         params = [{"params": model.emb.parameters(), "norm_type": 6, "norm_kwargs": {}, "scale": 3000},
-                  {"params": model.blocks.parameters(), "norm_type": 2, "norm_kwargs": {"steps": 5}, "scale": 50},
+                  {"params": model.blocks.parameters(), "norm_type": 2, "norm_kwargs": {}, "scale": 50},
                   {"params": model.linear.parameters(), "norm_type": 4, "norm_kwargs": {}, "scale": 3000}]
 
         optimizers = [pytorch_optimizer.SCION(params, lr=k_input, momentum=0.1)]

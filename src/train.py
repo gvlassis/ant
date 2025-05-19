@@ -10,7 +10,7 @@ import torchview
 import logging
 torch._logging.set_logs(all=logging.ERROR)
 import contextlib
-import lm_eval
+# import lm_eval
 import transformers
 import tokenmonster
 
@@ -43,6 +43,8 @@ parser.add_argument("--parametrization", help="(a)bc parametrization, as defined
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
 parser.add_argument("--pos_type", help="Positional embeddings", choices=models.transformer.POS_TYPES, default="rope")
+parser.add_argument("--weight_tying", help="Tie the embeddings table with the final linear head (https://arxiv.org/abs/1608.05859)", type=utils.str_to_bool, default=False)
+parser.add_argument("--window", help="Window for Sliding Window Attention (SWA) (https://arxiv.org/abs/2004.05150)", type=int, default=None)
 
 parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=False)
 parser.add_argument("--c_input", type=float, default=0.02)
@@ -151,7 +153,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, optimizers = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend)
+model, optimizers = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, args.weight_tying, args.window)
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 model = model.to(model_device)
 if args.info:
