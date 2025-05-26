@@ -7,6 +7,7 @@ import flash_attn
 SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 POS_TYPES = ["learned", "sinusoidal", "rope", "alibi"]
 BACKENDS = ["pytorch", "flash", "flex", "cudnn"]
+NORM_TYPES = ["layer", "rms_learned", "rms_const", "sphere"]
 
 def get_causal(context):
     causal = torch.full((context,context), True)
@@ -303,7 +304,7 @@ class MHSA(torch.nn.Module):
 
 # Pre-Norm
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", groups=None, exp_factor=4, dropout=0, norm_type="layer", bias=False, act=torch.nn.GELU(), l1_type="linear"):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", groups=None, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=torch.nn.GELU(), l1_type="linear", sandwich=True):
         super().__init__()
 
         self.heads = heads
@@ -318,17 +319,33 @@ class Block(torch.nn.Module):
         self.bias = bias
         self.act = act
         self.l1_type = l1_type
+        self.sandwich = sandwich
         
         self.mhsa = MHSA(heads, d_head, scale_type, groups)
         if norm_type=="layer":
             self.norm1 = torch.nn.LayerNorm(self.d, bias=bias)
             self.norm2 = torch.nn.LayerNorm(self.d, bias=bias)
-        elif norm_type=="rms":
+            if sandwich:
+                self.norm3 = torch.nn.LayerNorm(self.d, bias=bias)
+                self.norm4 = torch.nn.LayerNorm(self.d, bias=bias)
+        elif norm_type=="rms_learned":
+            self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
+            self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
+            if sandwich:
+                self.norm3 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
+                self.norm4 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
+        elif norm_type=="rms_const":
             self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
             self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+            if sandwich:
+                self.norm3 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
+                self.norm4 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
         elif norm_type=="sphere":
             self.norm1 = mlp.SphereNorm(dim=-1)
             self.norm2 = mlp.SphereNorm(dim=-1)
+            if sandwich:
+                self.norm3 = mlp.SphereNorm(dim=-1)
+                self.norm4 = mlp.SphereNorm(dim=-1)
 
         self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
 
@@ -337,10 +354,12 @@ class Block(torch.nn.Module):
             Y = self.mhsa(self.norm1(X), causal, rope, alibi, swa, return_A, backend)
         else:
             Y, A__, A_, A = self.mhsa(self.norm1(X), causal, rope, alibi, swa, return_A, backend)
+        if self.sandwich: Y = self.norm3(Y)
         Y_ = torch.nn.functional.dropout(Y, p=self.dropout, training=self.training)
         Y__ = X + Y_
 
         Z = self.mlp(self.norm2(Y__))
+        if self.sandwich: Z = self.norm4(Z)
         Z_ = torch.nn.functional.dropout(Z, p=self.dropout, training=self.training)
         Z__ = Y__ + Z_
 
@@ -350,7 +369,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms", bias=False, act=torch.nn.GELU(), l1_type="linear", std=0.02, test=False, weight_tying=False):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=torch.nn.GELU(), l1_type="linear", std=0.02, test=False, weight_tying=False, sandwich=True):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -372,6 +391,7 @@ class Transformer(torch.nn.Module):
         self.act = act
         self.l1_type = l1_type
         self.weight_tying = weight_tying
+        self.sandwich = sandwich
 
         self.emb = torch.nn.Embedding(vocab_size, self.d)
         
@@ -379,11 +399,13 @@ class Transformer(torch.nn.Module):
             pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
-        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, groups, exp_factor, dropout, norm_type, bias, act, l1_type) for _ in range(num_blocks)])
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, groups, exp_factor, dropout, norm_type, bias, act, l1_type, sandwich) for _ in range(num_blocks)])
         
         if norm_type=="layer":
             self.norm = torch.nn.LayerNorm(self.d, bias=bias)
-        elif norm_type=="rms":
+        elif norm_type=="rms_learned":
+            self.norm = torch.nn.RMSNorm(self.d, elementwise_affine=True)
+        elif norm_type=="rms_const":
             self.norm = torch.nn.RMSNorm(self.d, elementwise_affine=False)
         elif norm_type=="sphere":
             self.norm = mlp.SphereNorm(dim=-1)
@@ -399,9 +421,17 @@ class Transformer(torch.nn.Module):
         for parameter_name, parameter in self.named_parameters():
             parent_name, _, suffix = parameter_name.rpartition(".")
             parent = self.get_submodule(parent_name)
-            
-            if suffix=="weight":
+
+            if isinstance(parent, torch.nn.Linear) and suffix=="weight":
                 torch.nn.init.normal_(parameter, 0, std)
+            elif isinstance(parent, (torch.nn.Linear, torch.nn.LayerNorm)) and suffix=="bias":
+                torch.nn.init.zeros_(parameter)
+            elif isinstance(parent, (torch.nn.LayerNorm, torch.nn.RMSNorm)) and suffix=="weight":
+                torch.nn.init.ones_(parameter)
+            else:
+                # emb, pos
+                if parameter.ndim == 2:
+                    torch.nn.init.normal_(parameter, 0, std)
             
             if test:
                 print("%36.36s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, suffix, "%f" % parameter.mean(), "%f" % parameter.std()))

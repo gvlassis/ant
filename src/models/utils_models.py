@@ -10,7 +10,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_optimizers(vocab_size, family, parametrization, ζ, scale_type, pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning, backend, weight_tying, window):
+def get_model_optimizers(vocab_size, family, parametrization, ζ, scale_type, pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, max_context, test_parametrization, warning, backend, weight_tying, window, sandwich, norm_type):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -53,12 +53,12 @@ def get_model_optimizers(vocab_size, family, parametrization, ζ, scale_type, po
         model_ = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
 
     elif family=="transformer":
-        num_blocks = 12
+        num_blocks = 24
         heads = 12
-        d_head0 = 4
-        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context, std=c_input, test=False, weight_tying=weight_tying, window=window)
-        model = transformer.Transformer(vocab_size, num_blocks, heads, ζ*d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context, std=c_input, test=test_parametrization, weight_tying=weight_tying, window=window)
-        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context, std=c_input, test=False, weight_tying=weight_tying, window=window)
+        d_head0 = 8
+        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context, std=c_input, test=False, weight_tying=weight_tying, window=window, sandwich=sandwich, norm_type=norm_type)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, ζ*d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context, std=c_input, test=test_parametrization, weight_tying=weight_tying, window=window, sandwich=sandwich, norm_type=norm_type)
+        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, backend=backend, pos_type=pos_type, max_context=max_context, std=c_input, test=False, weight_tying=weight_tying, window=window, sandwich=sandwich, norm_type=norm_type)
 
     elif family=="ngpt":
         num_blocks = 12

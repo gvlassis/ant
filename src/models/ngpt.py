@@ -271,8 +271,7 @@ class nGPT(torch.nn.Module):
             parent_name, _, suffix = parameter_name.rpartition(".")
             parent = self.get_submodule(parent_name)
             
-            if suffix=="weight":
-                torch.nn.init.normal_(parameter, 0, std)
+            torch.nn.init.normal_(parameter, 0, std)
             
             if test:
                 print("%36.36s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, suffix, "%f" % parameter.mean(), "%f" % parameter.std()))

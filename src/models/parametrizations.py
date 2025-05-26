@@ -194,7 +194,7 @@ def get_fan(parameter, suffix, parent):
     elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d)) and suffix=="bias":
         fanin = 1
         fanout = len(parameter)
-    elif isinstance(parent, (torch.nn.BatchNorm2d, torch.nn.LayerNorm)) and (suffix=="weight" or suffix=="bias"):
+    elif isinstance(parent, (torch.nn.BatchNorm2d, torch.nn.LayerNorm, torch.nn.RMSNorm)) and (suffix=="weight" or suffix=="bias"):
         fanin = 1
         fanout = len(parameter)
     else:
@@ -240,7 +240,7 @@ def get_parameter_type(parameter, suffix, parent):
         parameter_type = "Linear/Conv.weight"
     elif isinstance(parent, (torch.nn.Linear, torch.nn.Conv2d, torch.nn.BatchNorm2d, torch.nn.LayerNorm)) and suffix=="bias":
         parameter_type = "bias"
-    elif isinstance(parent, (torch.nn.BatchNorm2d, torch.nn.LayerNorm)) and suffix=="weight":
+    elif isinstance(parent, (torch.nn.BatchNorm2d, torch.nn.LayerNorm, torch.nn.RMSNorm)) and suffix=="weight":
         parameter_type = "Norm.weight"
     else:
         # class

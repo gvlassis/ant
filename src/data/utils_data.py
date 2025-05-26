@@ -6,7 +6,7 @@ import torchvision.transforms.v2
 import sys
 from math import sqrt
 import collections
-import lm_eval
+# import lm_eval
 
 script_path = os.path.abspath(__file__)
 data_path = os.path.dirname(script_path)
@@ -444,7 +444,7 @@ def approximate_acc(batches, iterator, dataset, model, dtype):
 #     batch_Y.to(torch.int64) - torch.iinfo(torch.int16).min
 
 # requests=[lm_eval.api.instance.Instance,...] (e.g. multiple-choice answers)
-class LMEvalWrapper(lm_eval.api.model.LM):
+class LMEvalWrapper():
     def __init__(self, tokenizer_type, tokenizer, eot_id, model, dtype):
         super().__init__()
         

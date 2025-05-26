@@ -325,19 +325,19 @@ def write_featsdist(vocab_size, family, parametrization, scale_type, ζ, context
         with open(featsdist_path, "a") as file:
             file.write("%f %f\n" % (x, y))
 
-def write_heat(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
-    heat_path = "%s/%s%dheat.dat" % (out_path, arch, ζ)
+def write_heat(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block, run):    
+    heat_path = "%s/%sheat.dat" % (out_path, run)
     with open(heat_path, "w") as file:
         file.write("x y z\n")
 
-    model, _ = models.utils_models.get_model_optimizer(vocab_size, family, parametrization, scale_type, ζ, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True)
-    model_path = "%s/%s%d.pt" % (out_path, arch, ζ)
-    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model, _ = models.utils_models.get_model_optimizers(vocab_size, family, parametrization, ζ, scale_type, "rope", 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, context, False, True, "pytorch", True, None, True)
+    model_path = "%s/%s.pt" % (out_path, run)
+    model.load_state_dict(torch.load(model_path, weights_only=True, map_location="cuda:0"))
     model = model.to(device)
 
     model.eval()
     with torch.no_grad():
-        embeddings = model.get_embeddings(data.utils_data.transform(dataset, batch_X.to(device)))
+        Y, embeddings = model(data.utils_data.transform(dataset, batch_X.to(device)), return_emb=True)
     
     # context*d
     feats = embeddings[...,block,:,:].mean(dim=0)
@@ -355,13 +355,13 @@ def write_heat(vocab_size, family, parametrization, scale_type, ζ, context, arc
 
     print("%2.2s %8.8s %8.8s %12.12s %8.8s %8.8s %10.10s %10.10s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s" % (ζ, feats.shape[1], feats.shape[0], arch, "%.2f" % feats.mean(), "%.2f" % feats.std(), "%.2f" % feats.min(), "%.2f" % feats.max(), "%.2f%%" % std1, "%.2f%%" % std2, "%.2f%%" % std3, "%.2f" % skew, "%.2f" % kurt, "%.2f" % kurtrms, "%.2f" % mmr))
     
-    for feat in range(feats.shape[1]):
-        for token in range(feats.shape[0]):
-            with open(heat_path, "a") as file:
-                file.write("%d %d %f\n" % (token, feat, feats[token,feat]))
-
-        with open(heat_path, "a") as file:
-            file.write("\n")
+    # for feat in range(feats.shape[1]):
+    #     for token in range(feats.shape[0]):
+    #         with open(heat_path, "a") as file:
+    #             file.write("%d %d %f\n" % (token, feat, feats[token,feat]))
+    #
+    #     with open(heat_path, "a") as file:
+    #         file.write("\n")
 
 def write_cumexpvar(vocab_size, family, parametrization, scale_type, ζ, context, arch, device, dataset, batch_X, block):    
     cumexpvar_path = "%s/%s%dcumexpvar.dat" % (out_path, arch, ζ)
