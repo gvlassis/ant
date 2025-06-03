@@ -255,7 +255,7 @@ def get_parameter_type(parameter, suffix, parent):
 # model0: proxy
 # model: target
 # model_: A scaled (up or down) version of model0
-def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test, warning):
+def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test, warning, distributed):
     if parametrization == "np":
         params = [{"params": model.parameters(), "lr": k_input}]
 
@@ -324,13 +324,17 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
         optimizers = [pytorch_optimizer.SOAP(params)]
 
     elif optimizer=="muon":
-        input_params = [*model.emb.parameters()] + [p for p in model.blocks.parameters() if p.ndim < 2] 
-        hidden_params = [p for p in model.blocks.parameters() if p.ndim >= 2]
-        output_params = [*model.linear.parameters()]
+        input_params = [*model.emb.parameters()] + [p for p in model.parameters() if (p.ndim < 2 or p.ndim > 3)]
+        hidden_params = [p for p in model.blocks.parameters() if p.ndim == 2]
+        # output_params = [*model.linear.parameters()]
+        
+        if distributed:
+            muon_opt = muon.Muon(hidden_params, lr=k_hidden, momentum=0.95, weight_decay=weight_decay)
+        else:
+            muon_opt = muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=0.95, weight_decay=weight_decay)
 
         optimizers = [torch.optim.AdamW(input_params, lr=k_input, betas=betas, weight_decay=weight_decay, fused=True),
-                      muon.Muon(hidden_params, lr=k_hidden, momentum=0.95, rank=0, world_size=1),
-                      torch.optim.AdamW(output_params, lr=k_output, betas=betas, weight_decay=weight_decay, fused=True)]
+                      muon_opt]
 
     elif optimizer=="scion":
         # scale=radius/ρ (lr=γ*ρ)

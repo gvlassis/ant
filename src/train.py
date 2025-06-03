@@ -20,7 +20,7 @@ parser.add_argument("--save_model", help="Save the model with the min validation
 parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=False)
 parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
-parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=True)
+parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=False)
 parser.add_argument("--warning", type=utils.str_to_bool, default=True)
 parser.add_argument("--verbose", help="If True, print a pretty log in the stdout. If False, only print the final val_loss. Useful for piping.", type=utils.str_to_bool, default=True)
 parser.add_argument("--extra_freq", help="Every how many batches to perform the extra evaluations", type=int, default=utils.INF)
@@ -47,6 +47,7 @@ parser.add_argument("--weight_tying", help="Tie the embeddings table with the fi
 parser.add_argument("--window", help="Window for Sliding Window Attention (SWA) (https://arxiv.org/abs/2004.05150)", type=int, default=None)
 parser.add_argument("--sandwich", help="Use SandwichLN (https://arxiv.org/abs/2105.13290)", type=utils.str_to_bool, default=False)
 parser.add_argument("--norm_type", choices=models.transformer.NORM_TYPES, default="rms_learned")
+parser.add_argument("--qknorm", help="Query-Key Normalization", type=utils.str_to_bool, default=True)
 
 parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=False)
 parser.add_argument("--c_input", type=float, default=0.02)
@@ -155,7 +156,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, optimizers = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, args.weight_tying, args.window, args.sandwich, args.norm_type)
+model, optimizers = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, args.weight_tying, args.window, args.sandwich, args.norm_type, args.qknorm)
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 model = model.to(model_device)
 if args.info:

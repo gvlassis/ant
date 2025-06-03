@@ -109,10 +109,10 @@ def sdpa_pytorch(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
     # (batches*)heads*context*d_head
     heads = Q.shape[-3]
     groups = K.shape[-3]
-    heads_group = heads//groups
+    ratio = heads//groups
     # PyTorch only broadcasts when the operation is not defined otherwise. MM does not involve the batch dimensions, and hence PyTorch does not broadcast them.
-    K = K.repeat_interleave(repeats=heads_group, dim=-3)
-    V = V.repeat_interleave(repeats=heads_group, dim=-3)
+    K = K.repeat_interleave(repeats=ratio, dim=-3)
+    V = V.repeat_interleave(repeats=ratio, dim=-3)
 
     # (batches*)heads*context*context
     A__ = Q @ K.mT
@@ -137,6 +137,17 @@ def sdpa_pytorch(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
 
 # (batches*)heads/groups*context*d_head
 def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
+    # FlashAttention2 only supports float scale
+    if isinstance(scale, torch.Tensor):
+        Q *= scale
+        scale = 1
+    
+    # FlashAttention2 only supports BF16 and FP16
+    if Q.dtype in [torch.bfloat16, torch.float16]:
+        dtype = Q.dtype
+    else: 
+        dtype = torch.bfloat16
+
     heads = Q.shape[-3]
     groups = K.shape[-3]
     context = Q.shape[-2]
@@ -149,12 +160,7 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
     
     if swa is None:
         swa = (-1,-1)
-    
-    # FlashAttention2 only supports BF16 and FP16
-    if Q.dtype in [torch.bfloat16, torch.float16]:
-        dtype = Q.dtype
-    else: 
-        dtype = torch.bfloat16
+
     Y = flash_attn.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
     Y = Y.to(Q.dtype)
     
@@ -239,20 +245,26 @@ def test_sdpa():
     print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", groups=None):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qknorm=True):
         super().__init__()
 
         self.heads = heads
         self.d_head = d_head
         self.d = heads * d_head
         self.scale_type = scale_type
-        if scale_type=="1/sqrt(d)":
-            self.scale = 1/sqrt(d_head)
-        elif scale_type=="1/d":
-            self.scale = 1/d_head
-        self.groups = heads if groups is None else groups
+        self.ratio = ratio
+        self.groups = heads//ratio
         self.d_KV = self.groups * d_head
-        heads_group = heads//self.groups
+        self.qknorm = qknorm
+        if qknorm:
+            # (batches*)heads*context*d_head
+            scale = torch.full((1,heads,1,1), sqrt(d_head))
+            self.scale = torch.nn.Parameter(scale)
+        else:
+            if scale_type=="1/sqrt(d)":
+                self.scale = 1/sqrt(d_head)
+            elif scale_type=="1/d":
+                self.scale = 1/d_head
         
         # Packing QKV gives negligible speed gains, while not allowing GQA, hurting code clarity and having side effects with μP
         self.lq = torch.nn.Linear(self.d, self.d, bias=False)
@@ -284,6 +296,11 @@ class MHSA(torch.nn.Module):
         if rope is not None:
             Q = apply_rope(Q,rope)
             K = apply_rope(K,rope)
+        
+        # After RoPE
+        if self.qknorm:
+            Q = mlp.sphere_norm(Q)
+            K = mlp.sphere_norm(K)
 
         # (batches*)heads*context*d_head
         if not return_A:
@@ -304,14 +321,15 @@ class MHSA(torch.nn.Module):
 
 # Pre-Norm
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", groups=None, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=torch.nn.GELU(), l1_type="linear", sandwich=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=torch.nn.GELU(), l1_type="linear", sandwich=False, qknorm=True):
         super().__init__()
 
         self.heads = heads
         self.d_head = d_head
         self.d = heads * d_head
         self.scale_type = scale_type
-        self.groups = groups
+        self.ratio = ratio
+        self.groups = heads//ratio
         self.exp_factor = exp_factor
         self.d_hidden = exp_factor*self.d
         self.dropout = dropout
@@ -320,8 +338,9 @@ class Block(torch.nn.Module):
         self.act = act
         self.l1_type = l1_type
         self.sandwich = sandwich
+        self.qknorm = qknorm
         
-        self.mhsa = MHSA(heads, d_head, scale_type, groups)
+        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qknorm)
         if norm_type=="layer":
             self.norm1 = torch.nn.LayerNorm(self.d, bias=bias)
             self.norm2 = torch.nn.LayerNorm(self.d, bias=bias)
@@ -369,7 +388,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", groups=None, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=torch.nn.GELU(), l1_type="linear", std=0.02, test=False, weight_tying=False, sandwich=True):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=3, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=torch.nn.SiLU(), l1_type="glu", std=0.02, test=False, weight_tying=False, sandwich=False, qknorm=True):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -378,7 +397,8 @@ class Transformer(torch.nn.Module):
         self.d_head = d_head
         self.d = heads * d_head
         self.scale_type = scale_type
-        self.groups = groups
+        self.ratio = ratio
+        self.groups = heads//ratio
         self.is_causal = is_causal
         self.window = window
         self.backend = backend
@@ -392,6 +412,7 @@ class Transformer(torch.nn.Module):
         self.l1_type = l1_type
         self.weight_tying = weight_tying
         self.sandwich = sandwich
+        self.qknorm = qknorm
 
         self.emb = torch.nn.Embedding(vocab_size, self.d)
         
@@ -399,7 +420,7 @@ class Transformer(torch.nn.Module):
             pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
-        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, groups, exp_factor, dropout, norm_type, bias, act, l1_type, sandwich) for _ in range(num_blocks)])
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, sandwich, qknorm) for _ in range(num_blocks)])
         
         if norm_type=="layer":
             self.norm = torch.nn.LayerNorm(self.d, bias=bias)
@@ -422,16 +443,19 @@ class Transformer(torch.nn.Module):
             parent_name, _, suffix = parameter_name.rpartition(".")
             parent = self.get_submodule(parent_name)
 
-            if isinstance(parent, torch.nn.Linear) and suffix=="weight":
+            if isinstance(parent, (torch.nn.Linear, torch.nn.Embedding)) and suffix=="weight":
                 torch.nn.init.normal_(parameter, 0, std)
             elif isinstance(parent, (torch.nn.Linear, torch.nn.LayerNorm)) and suffix=="bias":
                 torch.nn.init.zeros_(parameter)
             elif isinstance(parent, (torch.nn.LayerNorm, torch.nn.RMSNorm)) and suffix=="weight":
                 torch.nn.init.ones_(parameter)
             else:
-                # emb, pos
+                # pos
                 if parameter.ndim == 2:
-                    torch.nn.init.normal_(parameter, 0, std)
+                    torch.nn.init.zeros_(parameter)
+                # scale
+                elif parameter.ndim == 4:
+                    torch.nn.init.constant_(parameter, sqrt(self.d_head))
             
             if test:
                 print("%36.36s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, suffix, "%f" % parameter.mean(), "%f" % parameter.std()))
