@@ -9,9 +9,11 @@ warnings.formatwarning = get_formatwarning
 import pytorch_optimizer
 import muon
 import heavyball
+# import distributed_shampoo
+from . import optimizers
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "lion", "sophia", "sfadam", "soap", "muon", "scion", "ademamix", "adopt", "mars", "cautious", "grams"]
+OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "lion", "ademamix", "soap", "muon", "scion"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -230,7 +232,7 @@ def get_layers(model, model_, warning=True):
         elif fanin != fanin_ and fanout == fanout_:
             layers[parameter_name] = "output"
         else:
-            if warning: warnings.warn(f"{parameter_name} is not \"input\", \"hidden\" or \"output\". This means that you are either not scaling the WHOLE model_ (in which case parametrizations do not work), or that {parameter_name} is an output bias, and hence an \"input\" layer. We are going to assume tha latter.", UserWarning)
+            if warning: warnings.warn(f"{parameter_name} is not \"input\", \"hidden\" or \"output\". This means that you are either not scaling the WHOLE model_ (in which case parametrizations do not work), or that {parameter_name} is an output bias, and hence an \"input\" layer. We are going to assume the latter.", UserWarning)
             layers[parameter_name] = "input"
 
     return layers
@@ -255,9 +257,12 @@ def get_parameter_type(parameter, suffix, parent):
 # model0: proxy
 # model: target
 # model_: A scaled (up or down) version of model0
-def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, optimizer, momentum, nesterov, betas, weight_decay, test, warning, distributed):
+def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, eps, weight_decay, test, warning, distributed, comp):
     if parametrization == "np":
-        params = [{"params": model.parameters(), "lr": k_input}]
+        input_params = list(model.emb.parameters())
+        vector_params = [parameter for parameter in model.parameters() if (parameter.ndim < 2 or parameter.ndim > 3)]
+        hidden_params = [parameter for parameter in model.blocks.parameters() if parameter.ndim == 2]
+        # output_params = list(model.linear.parameters())
 
     else:
         layers = get_layers(model0, model_, warning)
@@ -277,10 +282,10 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
             fanin, fanout = get_fan(parameter, suffix, parent)
 
             B1, B2, C1_sgd, C2_sgd, C1_adam, C2_adam = lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout)
-            if optimizer == "sgd":
+            if opt == "sgd":
                 C1 = C1_sgd
                 C2 = C2_sgd
-            elif optimizer == "adam":
+            elif opt == "adam":
                 C1 = C1_adam
                 C2 = C2_adam
             
@@ -296,67 +301,83 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
             params.append({"params": parameter, "lr": lr})
 
             if test: print("%36.36s %8.8s %20.20s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, layer, parameter_type, fanin0, fanin, fanout0, fanout, "%f" % mean, "%f" % B0, "%f" % B1, "%f" % B2, "%f" % std, "%f" % C0, "%f" % C1, "%f" % C2, "%f" % lr))
+    
+    # Sep, 1951
+    if opt=="sgd":
+        opts = [
+            torch.optim.SGD(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, nesterov=True, fused=True),
+            torch.optim.SGD(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, nesterov=True, fused=True),
+            # torch.optim.SGD(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, nesterov=True, fused=True)
+        ]
+    
+    # Dec, 2014
+    elif opt=="adam":
+        opts = [
+            torch.optim.AdamW(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True),
+            torch.optim.AdamW(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True),
+            # torch.optim.AdamW(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True)
+        ]
+    
+    # Dec, 2015
+    elif opt=="psgd":
+        opts = [
+            pytorch_optimizer.Kron(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=8192, min_ndim_triangular=2, memory_save_mode=None),
+            pytorch_optimizer.Kron(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=8192, min_ndim_triangular=2, memory_save_mode=None),
+            # pytorch_optimizer.Kron(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=8192, min_ndim_triangular=2, memory_save_mode=None)
+        ]
+    
+    # Feb, 2018
+    elif opt=="shampoo":
+        distributed_config = distributed_shampoo.DDPShampooConfig() if distributed else None
 
-    if optimizer=="sgd":
-        # fused=True is negligibly faster
-        optimizers = [torch.optim.SGD(params, momentum=momentum, weight_decay=weight_decay, nesterov=nesterov, fused=True)]
+        shampoo_pt2_compile_config = distributed_shampoo.ShampooPT2CompileConfig() if comp else None
 
-    elif optimizer=="adam":
-        # fused=True is negligibly faster
-        optimizers = [torch.optim.AdamW(params, betas=betas, weight_decay=weight_decay, fused=True)]
+        opts = [
+            distributed_shampoo.DistributedShampoo(input_params+vector_params, lr=k_input, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True),
+            distributed_shampoo.DistributedShampoo(hidden_params, lr=k_hidden, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True),
+            # distributed_shampoo.DistributedShampoo(output_params, lr=k_output, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True)
+        ]
 
-    elif optimizer=="psgd":
-        optimizers = [pytorch_optimizer.Kron(params, memory_save_mode="all_diag")]
+    # Feb, 2023
+    elif opt=="lion":
+        opts = [
+            pytorch_optimizer.Lion(input_params+vector_params, lr=k_input, betas=(momentum, beta2), weight_decay=weight_decay, weight_decouple=True),
+            pytorch_optimizer.Lion(hidden_params, lr=k_hidden, betas=(momentum, beta2), weight_decay=weight_decay, weight_decouple=True),
+            # pytorch_optimizer.Lion(output_params, lr=k_output, betas=(momentum, beta2), weight_decay=weight_decay, weight_decouple=True)
+        ]
+    
+    # Sep, 2024
+    elif opt=="ademamix":
+        opts = [
+            pytorch_optimizer.AdEMAMix(input_params+vector_params, lr=k_input, betas=(momentum, beta2, beta3), alpha=alpha, eps=eps, weight_decay=weight_decay, weight_decouple=True),
+            pytorch_optimizer.AdEMAMix(hidden_params, lr=k_hidden, betas=(momentum, beta2, beta3), alpha=alpha, eps=eps, weight_decay=weight_decay, weight_decouple=True),
+            # pytorch_optimizer.AdEMAMix(output_params, lr=k_output, betas=(momentum, beta2, beta3), alpha=alpha, eps=eps, weight_decay=weight_decay, weight_decouple=True)
+        ]
 
-    elif optimizer=="shampoo":
-        optimizers = [pytorch_optimizer.ScalableShampoo(params)]
+    # Sep, 2024
+    elif opt=="soap":
+        opts = [
+            pytorch_optimizer.SOAP(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True),
+            pytorch_optimizer.SOAP(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True),
+            # pytorch_optimizer.SOAP(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True)
+        ]
+    
+    # Dec, 2024
+    elif opt=="muon":
+        opts = [
+            torch.optim.AdamW(input_params+vector_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
+            muon.Muon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay) if distributed else muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
+            # torch.optim.AdamW(output_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True)
+        ]
+    
+    # Feb, 2025
+    elif opt=="scion":
+        opts = [
+            pytorch_optimizer.SCION(input_params, constraint=False, norm_type=4, scale=3000, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True),
+            torch.optim.AdamW(vector_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
+            # pytorch_optimizer.SCION(vector_params, constraint=False, norm_type=5, scale=50, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True),
+            pytorch_optimizer.SCION(hidden_params, constraint=False, norm_type=2, scale=50, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True),
+            # pytorch_optimizer.SCION(output_params, constraint=False, norm_type=4, scale=3000, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True)
+        ]
 
-    elif optimizer=="lion":
-        optimizers = [pytorch_optimizer.Lion(params)]
-
-    elif optimizer=="sophia":
-        optimizers = [pytorch_optimizer.SophiaH(params)]
-
-    elif optimizer=="sfadam":
-        optimizers = [pytorch_optimizer.ScheduleFreeAdamW(params)]
-
-    elif optimizer=="soap":
-        optimizers = [pytorch_optimizer.SOAP(params)]
-
-    elif optimizer=="muon":
-        input_params = [*model.emb.parameters()] + [p for p in model.parameters() if (p.ndim < 2 or p.ndim > 3)]
-        hidden_params = [p for p in model.blocks.parameters() if p.ndim == 2]
-        # output_params = [*model.linear.parameters()]
-        
-        if distributed:
-            muon_opt = muon.Muon(hidden_params, lr=k_hidden, momentum=0.95, weight_decay=weight_decay)
-        else:
-            muon_opt = muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=0.95, weight_decay=weight_decay)
-
-        optimizers = [torch.optim.AdamW(input_params, lr=k_input, betas=betas, weight_decay=weight_decay, fused=True),
-                      muon_opt]
-
-    elif optimizer=="scion":
-        # scale=radius/ρ (lr=γ*ρ)
-        params = [{"params": model.emb.parameters(), "norm_type": 6, "norm_kwargs": {}, "scale": 3000},
-                  {"params": model.blocks.parameters(), "norm_type": 2, "norm_kwargs": {}, "scale": 50},
-                  {"params": model.linear.parameters(), "norm_type": 4, "norm_kwargs": {}, "scale": 3000}]
-
-        optimizers = [pytorch_optimizer.SCION(params, lr=k_input, momentum=0.1)]
-
-    elif optimizer=="ademamix":
-        optimizers = [pytorch_optimizer.AdEMAMix(params, betas=(betas[0], betas[1], 0.98), weight_decay=weight_decay)]
-
-    elif optimizer=="adopt":
-        optimizers = [pytorch_optimizer.ADOPT(params, betas=betas, weight_decay=weight_decay)]
-
-    elif optimizer=="mars":
-        optimizers = [heavyball.ForeachAdamW(params, betas=betas, weight_decay=weight_decay, mars=True)]
-
-    elif optimizer=="cautious":
-        optimizers = [heavyball.ForeachAdamW(params, betas=betas, weight_decay=weight_decay, caution=True)]
-
-    elif optimizer=="grams":
-        optimizers = [pytorch_optimizer.Grams(params, betas=betas, weight_decay=weight_decay)]
-
-    return optimizers
+    return opts

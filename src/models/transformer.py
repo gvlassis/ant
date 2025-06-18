@@ -245,7 +245,7 @@ def test_sdpa():
     print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qknorm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True):
         super().__init__()
 
         self.heads = heads
@@ -255,8 +255,8 @@ class MHSA(torch.nn.Module):
         self.ratio = ratio
         self.groups = heads//ratio
         self.d_KV = self.groups * d_head
-        self.qknorm = qknorm
-        if qknorm:
+        self.qk_norm = qk_norm
+        if qk_norm:
             # (batches*)heads*context*d_head
             scale = torch.full((1,heads,1,1), sqrt(d_head))
             self.scale = torch.nn.Parameter(scale)
@@ -298,7 +298,7 @@ class MHSA(torch.nn.Module):
             K = apply_rope(K,rope)
         
         # After RoPE
-        if self.qknorm:
+        if self.qk_norm:
             Q = mlp.sphere_norm(Q)
             K = mlp.sphere_norm(K)
 
@@ -321,7 +321,7 @@ class MHSA(torch.nn.Module):
 
 # Pre-Norm
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=torch.nn.GELU(), l1_type="linear", sandwich=False, qknorm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=3, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
         super().__init__()
 
         self.heads = heads
@@ -337,48 +337,31 @@ class Block(torch.nn.Module):
         self.bias = bias
         self.act = act
         self.l1_type = l1_type
-        self.sandwich = sandwich
-        self.qknorm = qknorm
         
-        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qknorm)
-        if norm_type=="layer":
-            self.norm1 = torch.nn.LayerNorm(self.d, bias=bias)
-            self.norm2 = torch.nn.LayerNorm(self.d, bias=bias)
-            if sandwich:
-                self.norm3 = torch.nn.LayerNorm(self.d, bias=bias)
-                self.norm4 = torch.nn.LayerNorm(self.d, bias=bias)
-        elif norm_type=="rms_learned":
-            self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
-            self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
-            if sandwich:
-                self.norm3 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
-                self.norm4 = torch.nn.RMSNorm(self.d, elementwise_affine=True)
-        elif norm_type=="rms_const":
-            self.norm1 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-            self.norm2 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-            if sandwich:
-                self.norm3 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-                self.norm4 = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-        elif norm_type=="sphere":
-            self.norm1 = mlp.SphereNorm(dim=-1)
-            self.norm2 = mlp.SphereNorm(dim=-1)
-            if sandwich:
-                self.norm3 = mlp.SphereNorm(dim=-1)
-                self.norm4 = mlp.SphereNorm(dim=-1)
+        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm)
+        self.pre_att_norm = mlp.get_norm(pre_att_norm, norm_type, self.d, bias)
+        self.out_att_norm = mlp.get_norm(out_att_norm, norm_type, self.d, bias)
 
-        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act=act, dropout=dropout, l1_type=l1_type)
-
+        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm)
+        self.pre_mlp_norm = mlp.get_norm(pre_mlp_norm, norm_type, self.d, bias)
+        self.out_mlp_norm = mlp.get_norm(out_mlp_norm, norm_type, self.d, bias)
+        
     def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash"):
+        mhsa = self.mhsa(self.pre_att_norm(X) if self.pre_att_norm else X, causal, rope, alibi, swa, return_A, backend)
         if not return_A:
-            Y = self.mhsa(self.norm1(X), causal, rope, alibi, swa, return_A, backend)
+            Y = mhsa
         else:
-            Y, A__, A_, A = self.mhsa(self.norm1(X), causal, rope, alibi, swa, return_A, backend)
-        if self.sandwich: Y = self.norm3(Y)
+            Y, A__, A_, A = mhsa
+
+        if self.out_att_norm: Y = self.out_att_norm(Y)
+
         Y_ = torch.nn.functional.dropout(Y, p=self.dropout, training=self.training)
         Y__ = X + Y_
+        
+        Z = self.mlp(self.pre_mlp_norm(Y__) if self.pre_mlp_norm else Y__)
 
-        Z = self.mlp(self.norm2(Y__))
-        if self.sandwich: Z = self.norm4(Z)
+        if self.out_mlp_norm: Z = self.out_mlp_norm(Z)
+
         Z_ = torch.nn.functional.dropout(Z, p=self.dropout, training=self.training)
         Z__ = Y__ + Z_
 
@@ -388,7 +371,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=3, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=torch.nn.SiLU(), l1_type="glu", std=0.02, test=False, weight_tying=False, sandwich=False, qknorm=True):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -411,25 +394,19 @@ class Transformer(torch.nn.Module):
         self.act = act
         self.l1_type = l1_type
         self.weight_tying = weight_tying
-        self.sandwich = sandwich
-        self.qknorm = qknorm
+        self.fix_norm = fix_norm
 
         self.emb = torch.nn.Embedding(vocab_size, self.d)
-        
+
+        self.emb_norm = mlp.get_norm(emb_norm, norm_type, self.d, bias)
+
         if pos_type == "learned":
             pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
-        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, sandwich, qknorm) for _ in range(num_blocks)])
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm) for _ in range(num_blocks)])
         
-        if norm_type=="layer":
-            self.norm = torch.nn.LayerNorm(self.d, bias=bias)
-        elif norm_type=="rms_learned":
-            self.norm = torch.nn.RMSNorm(self.d, elementwise_affine=True)
-        elif norm_type=="rms_const":
-            self.norm = torch.nn.RMSNorm(self.d, elementwise_affine=False)
-        elif norm_type=="sphere":
-            self.norm = mlp.SphereNorm(dim=-1)
+        self.out_norm = mlp.get_norm(out_norm, norm_type, self.d, bias)
         
         self.linear = torch.nn.Linear(self.d, vocab_size, bias=False)
 
@@ -524,6 +501,9 @@ class Transformer(torch.nn.Module):
                 # left_bound
                 swa = self.window
         else: swa = None
+        
+        # After positional encoding
+        if self.emb_norm: X = self.emb_norm(X)
 
         X_ = torch.nn.functional.dropout(X, p=self.dropout, training=self.training)
 
@@ -536,11 +516,14 @@ class Transformer(torch.nn.Module):
 
             if return_emb:
                 embeddings[...,i+1,:,:] = Y
-            
-        Y_ = self.norm(Y)
+        
+        if self.out_norm: Y = self.out_norm(Y)
 
         # (batches*)context*vocab_size
-        Z = self.linear(Y_)
+        if self.fix_norm:
+            Z = torch.nn.functional.linear(Y, mlp.sphere_norm(self.linear.weight))
+        else:
+            Z = self.linear(Y)
         
         if not return_A:
             if not return_emb:

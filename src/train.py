@@ -17,10 +17,10 @@ import tokenmonster
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
 parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=True)
-parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=False)
+parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=True)
 parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
-parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=False)
+parser.add_argument("--print_schedule", help="Print learning rate schedule", type=utils.str_to_bool, default=True)
 parser.add_argument("--warning", type=utils.str_to_bool, default=True)
 parser.add_argument("--verbose", help="If True, print a pretty log in the stdout. If False, only print the final val_loss. Useful for piping.", type=utils.str_to_bool, default=True)
 parser.add_argument("--extra_freq", help="Every how many batches to perform the extra evaluations", type=int, default=utils.INF)
@@ -36,32 +36,28 @@ parser.add_argument("--arc", help="As an extra, evaluate the ARC (easy) NORMALIZ
 parser.add_argument("--hellaswag", help="As an extra, evaluate the HellaSwag NORMALIZED accuracy", type=utils.str_to_bool, default=False)
 parser.add_argument("--piqa", help="As an extra, evaluate the PIQA NORMALIZED accuracy", type=utils.str_to_bool, default=False)
 
-parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="openwebtext")
-parser.add_argument("--vocab_size", type=int, default=50304)
+parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="climbmix10m")
+parser.add_argument("--vocab_size", type=int, default=32000)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization, as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522). np (No Parametrization) means that the initialization is handled internally by the model.", choices=models.parametrizations.PARAMETRIZATIONS, default="np")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
-parser.add_argument("--pos_type", help="Positional embeddings", choices=models.transformer.POS_TYPES, default="rope")
-parser.add_argument("--weight_tying", help="Tie the embeddings table with the final linear head (https://arxiv.org/abs/1608.05859)", type=utils.str_to_bool, default=False)
-parser.add_argument("--window", help="Window for Sliding Window Attention (SWA) (https://arxiv.org/abs/2004.05150)", type=int, default=None)
-parser.add_argument("--sandwich", help="Use SandwichLN (https://arxiv.org/abs/2105.13290)", type=utils.str_to_bool, default=False)
-parser.add_argument("--norm_type", choices=models.transformer.NORM_TYPES, default="rms_learned")
-parser.add_argument("--qknorm", help="Query-Key Normalization", type=utils.str_to_bool, default=True)
 
 parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=False)
 parser.add_argument("--c_input", type=float, default=0.02)
 parser.add_argument("--c_hidden", type=float, default=0.5)
 parser.add_argument("--c_output", type=float, default=0.5)
-parser.add_argument("--optimizer", choices=models.parametrizations.OPTIMIZERS, default="adam")
+parser.add_argument("--opt", choices=models.parametrizations.OPTIMIZERS, default="adam")
 parser.add_argument("--k_input", type=float, default=1e-3)
 parser.add_argument("--k_hidden", type=float, default=1e-3)
 parser.add_argument("--k_output", type=float, default=1e-3)
 parser.add_argument("--scheduler", help="Learning rate schedule", choices=utils.SCHEDULERS, default="trapezoidal")
-parser.add_argument("--momentum", type=float, default=0)
-parser.add_argument("--nesterov", help="Use Nesterov momentum", type=utils.str_to_bool, default=False)
-parser.add_argument("--β1", type=float, default=0.9)
-parser.add_argument("--β2", type=float, default=0.95)
+parser.add_argument("--momentum", type=float, default=0.9)
+parser.add_argument("--beta2", type=float, default=0.95)
+parser.add_argument("--beta3", type=float, default=0.98)
+parser.add_argument("--alpha", type=float, default=5)
+parser.add_argument("--eps", type=float, default=1e-8)
+
 parser.add_argument("--weight_decay", type=float, default=0)
 parser.add_argument("--label_smoothing", type=float, default=0)
 parser.add_argument("--pre_norm", help="Normalize the weights on the unit hypersphere after initialization", type=utils.str_to_bool, default=False)
@@ -71,18 +67,18 @@ parser.add_argument("--batch_size", help="Total batch size, over all GPUs and ac
 parser.add_argument("--micro_batch_size", help="Batch size that fits in every GPU", type=int, default=32)
 parser.add_argument("--context", type=int, default=1024)
 parser.add_argument("--train_batches", help="The number of batches used during training", type=int, default=10_000)
-parser.add_argument("--thresh", help="Keep the model that first crosses this threshold in SUBPATH_thresh.pt", type=float, default=0)
-parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=10)
-parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be evaluated", type=int, default=100)
+parser.add_argument("--thresh", help="Keep the model that first crosses this threshold in SUBPATH_thresh.pt", type=float, default=4.2)
+parser.add_argument("--val_batches", help="The number of batches used during validation", type=int, default=20)
+parser.add_argument("--update_freq", help="Every how many batches the train and the validation loss will be evaluated", type=int, default=200)
 
 parser.add_argument("--model_device_index", help="CUDA device that stores the model", type=int, default=0)
 parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Device type that preloads the dataset", default="cpu")
 parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="bfloat16")
-parser.add_argument("--compile", help="Use torch.compile()", type=utils.str_to_bool, default=True)
+parser.add_argument("--comp", help="Use torch.compile()", type=utils.str_to_bool, default=True)
 parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backend", choices=models.transformer.BACKENDS, default="flash")
-parser.add_argument("--tokenizer_type", choices=data.utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenizers")
-parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="gpt2")
-parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=50256)
+parser.add_argument("--tokenizer_type", choices=data.utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenmonster")
+parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
+parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
 args=parser.parse_args()
 
 torchelastic = os.getenv("TORCHELASTIC_RUN_ID") != None
@@ -156,9 +152,8 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, optimizers = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, args.pos_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.optimizer, args.momentum, args.nesterov, (args.β1, args.β2), args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, args.weight_tying, args.window, args.sandwich, args.norm_type, args.qknorm)
+model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp)
 if args.pre_norm: model = models.utils_models.weight_norm(model)
-model = model.to(model_device)
 if args.info:
     batch_X, _ = next(train_iterator)
     # Not having batch dimension can cause problems (e.g. BatchNorm)
@@ -178,7 +173,7 @@ scaler = torch.amp.GradScaler("cuda", enabled=(args.dtype==torch.float16))
 if torchelastic: model = torch.nn.parallel.DistributedDataParallel(model)
 
 # Compile after DDP
-if args.compile:
+if args.comp:
     if master and args.verbose: print("⏳ Compiling")
     # mode=max-autotune gives NaN
     get_loss = torch.compile(data.utils_data.get_loss)
@@ -186,8 +181,8 @@ else:
     get_loss = data.utils_data.get_loss
 
 schedulers = []
-for optimizer in optimizers:
-    scheduler = utils.get_scheduler(args.scheduler, optimizer, args.train_batches)
+for opt in opts:
+    scheduler = utils.get_scheduler(args.scheduler, opt, args.train_batches)
     schedulers.append(scheduler)
     if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
 
@@ -406,11 +401,11 @@ for train_batch in range(args.train_batches):
         with open(extra_path,"a") as file:
             file.write("\n")
     
-    for optimizer in optimizers:
-        scaler.step(optimizer)
+    for opt in opts:
+        scaler.step(opt)
     if args.post_norm: model = models.utils_models.weight_norm(model)
-    for optimizer in optimizers:
-        optimizer.zero_grad()
+    for opt in opts:
+        opt.zero_grad()
     scaler.update()
     for scheduler in schedulers:
         scheduler.step()

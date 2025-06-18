@@ -16,6 +16,21 @@ class SphereNorm(torch.nn.Module):
 
         return Y
 
+def get_norm(enable, norm_type, d, bias):
+    if enable:
+        if norm_type=="layer":
+            norm = torch.nn.LayerNorm(d, bias=bias)
+        elif norm_type=="rms_learned":
+            norm = torch.nn.RMSNorm(d, elementwise_affine=True)
+        elif norm_type=="rms_const":
+            norm = torch.nn.RMSNorm(d, elementwise_affine=False)
+        elif norm_type=="sphere":
+            norm = SphereNorm(dim=-1)
+    else:
+        norm = None
+
+    return norm
+
 class ReLU2(torch.nn.Module):
     def forward(self, x):
         y = torch.nn.functional.relu(x)**2
@@ -47,7 +62,7 @@ class GLU(torch.nn.Module):
         return y
 
 class MLP2L(torch.nn.Module):
-    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear"):
+    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False):
         super().__init__()
 
         self.d0 = d0
@@ -57,15 +72,20 @@ class MLP2L(torch.nn.Module):
         self.act = act
         self.dropout = dropout
         self.l1_type = l1_type
+        self.norm_type = norm_type
 
         if l1_type=="linear":
             self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
         elif l1_type=="glu":
             self.l1 = GLU(d0, d1, bias, act)
+
+        self.norm = get_norm(norm, norm_type, d1, bias)
+
         self.l2 = torch.nn.Linear(d1, d2, bias)
 
     def forward(self, x):
         a1 = self.l1(x)
+        if self.norm: a1 = self.norm(a1)
         a1 = torch.nn.functional.dropout(a1, p=self.dropout, training=self.training)
 
         y = self.l2(a1)

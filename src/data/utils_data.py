@@ -230,7 +230,8 @@ def get_iterator(dataset, split, device, batch_size, context):
         dataset = TextDataset(dataset_path, split=split, device=device, context=context)
     
     # shuffle=True hangs, num_samples: Maximum samples (default: len(dataset))
-    sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=sys.maxsize)
+    generator = torch.Generator(device)
+    sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=sys.maxsize, generator=generator)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=sampler, drop_last=True)
     iterator = iter(dataloader)
 
