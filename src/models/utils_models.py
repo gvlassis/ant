@@ -10,7 +10,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, eps, weight_decay, max_context, test_parametrization, warning, distributed, backend, device, comp):
+def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, max_context, test_parametrization, warning, distributed, backend, device, comp):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -72,7 +72,7 @@ def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input,
     # Move model to device BEFORE optimizer(model.parameters())
     model = model.to(device)
 
-    opts = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, eps, weight_decay, test_parametrization, warning, distributed, comp)
+    opts = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, test_parametrization, warning, distributed, comp)
 
     return model, opts
 

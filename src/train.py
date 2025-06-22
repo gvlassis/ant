@@ -56,6 +56,7 @@ parser.add_argument("--momentum", type=float, default=0.9)
 parser.add_argument("--beta2", type=float, default=0.95)
 parser.add_argument("--beta3", type=float, default=0.98)
 parser.add_argument("--alpha", type=float, default=5)
+parser.add_argument("--gamma", type=float, default=0.025)
 parser.add_argument("--eps", type=float, default=1e-8)
 
 parser.add_argument("--weight_decay", type=float, default=0)
@@ -152,7 +153,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp)
+model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp)
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 if args.info:
     batch_X, _ = next(train_iterator)

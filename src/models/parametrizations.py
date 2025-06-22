@@ -13,7 +13,7 @@ import heavyball
 from . import optimizers
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "lion", "ademamix", "soap", "muon", "scion"]
+OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -257,7 +257,7 @@ def get_parameter_type(parameter, suffix, parent):
 # model0: proxy
 # model: target
 # model_: A scaled (up or down) version of model0
-def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, eps, weight_decay, test, warning, distributed, comp):
+def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, test, warning, distributed, comp):
     if parametrization == "np":
         input_params = list(model.emb.parameters())
         vector_params = [parameter for parameter in model.parameters() if (parameter.ndim < 2 or parameter.ndim > 3)]
@@ -338,6 +338,14 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
             # distributed_shampoo.DistributedShampoo(output_params, lr=k_output, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True)
         ]
 
+    # Feb, 2020
+    elif opt=="laprop":
+        opts = [
+            pytorch_optimizer.LaProp(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True),
+            pytorch_optimizer.LaProp(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True),
+            # pytorch_optimizer.LaProp(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True)
+        ]
+
     # Feb, 2023
     elif opt=="lion":
         opts = [
@@ -361,6 +369,30 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
             pytorch_optimizer.SOAP(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True),
             # pytorch_optimizer.SOAP(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True)
         ]
+
+    # Nov, 2024
+    elif opt=="adopt":
+        opts = [
+            pytorch_optimizer.ADOPT(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True, clip_lambda=lambda step: step**(1/4)),
+            pytorch_optimizer.ADOPT(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True, clip_lambda=lambda step: step**(1/4)),
+            # pytorch_optimizer.ADOPT(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True, clip_lambda=lambda step: step**(1/4))
+        ]
+
+    # Nov, 2024
+    elif opt=="marsadam":
+        opts = [
+            pytorch_optimizer.MARS(input_params+vector_params, lr=k_input, betas=(momentum, beta2), gamma=gamma, eps=eps, weight_decay=weight_decay, weight_decouple=True, mars_type="adamw", optimize_1d=True),
+            pytorch_optimizer.MARS(hidden_params, lr=k_hidden, betas=(momentum, beta2), gamma=gamma, eps=eps, weight_decay=weight_decay, weight_decouple=True, mars_type="adamw", optimize_1d=True),
+            # pytorch_optimizer.MARS(output_params, lr=k_output, betas=(momentum, beta2), gamma=gamma, eps=eps, weight_decay=weight_decay, weight_decouple=True, mars_type="adamw", optimize_1d=True)
+        ]
+
+    # Nov, 2024
+    elif opt=="cadam":
+        opts = [
+            heavyball.ForeachAdamW(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True, storage_dtype="float32"),
+            heavyball.ForeachAdamW(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True, storage_dtype="float32"),
+            # heavyball.ForeachAdamW(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True, storage_dtype="float32")
+        ]
     
     # Dec, 2024
     elif opt=="muon":
@@ -373,11 +405,10 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
     # Feb, 2025
     elif opt=="scion":
         opts = [
-            pytorch_optimizer.SCION(input_params, constraint=False, norm_type=4, scale=3000, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True),
-            torch.optim.AdamW(vector_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
-            # pytorch_optimizer.SCION(vector_params, constraint=False, norm_type=5, scale=50, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True),
-            pytorch_optimizer.SCION(hidden_params, constraint=False, norm_type=2, scale=50, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True),
-            # pytorch_optimizer.SCION(output_params, constraint=False, norm_type=4, scale=3000, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True)
+            pytorch_optimizer.SCION(input_params, lr=1, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=4, scale=1),
+            pytorch_optimizer.SCION(vector_params, lr=3e-3, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=8, scale=1),
+            pytorch_optimizer.SCION(hidden_params, lr=k_hidden, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=2, scale=1),
+            # pytorch_optimizer.SCION(output_params, lr=k_output, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=4, scale=1)
         ]
 
     return opts

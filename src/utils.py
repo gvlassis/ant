@@ -330,7 +330,7 @@ def write_heat(vocab_size, family, parametrization, scale_type, ζ, context, arc
     with open(heat_path, "w") as file:
         file.write("x y z\n")
 
-    model, _ = models.utils_models.get_model_opts(vocab_size, family, parametrization, ζ, scale_type, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0.9, 0.95, 0.98, 5, 1e-8, 0, context, False, True, False, "pytorch", "cuda:0", False)
+    model, _ = models.utils_models.get_model_opts(vocab_size, family, parametrization, ζ, scale_type, 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0.9, 0.95, 0.98, 5, 0.025, 1e-8, 0, context, False, True, False, "pytorch", "cuda:0", False)
     model_path = "%s/%s.pt" % (out_path, run)
     model.load_state_dict(torch.load(model_path, weights_only=True, map_location="cuda:0"))
     model = model.to(device)
