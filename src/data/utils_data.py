@@ -229,9 +229,13 @@ def get_iterator(dataset, split, device, batch_size, context):
     elif dataset in DATASETS_TEXT:
         dataset = TextDataset(dataset_path, split=split, device=device, context=context)
     
-    # shuffle=True hangs, num_samples: Maximum samples (default: len(dataset))
+    # Has to be on the same device as the dataset
     generator = torch.Generator(device)
+    # For DDP, it must have different seeds on different ranks
+    generator.seed()
+    # num_samples: Maximum samples (default: len(dataset))
     sampler = torch.utils.data.RandomSampler(dataset, replacement=True, num_samples=sys.maxsize, generator=generator)
+    # shuffle=True hangs
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, sampler=sampler, drop_last=True)
     iterator = iter(dataloader)
 
