@@ -4,7 +4,6 @@ import re
 import time
 import unicodedata
 import copy
-import plotext
 import numpy
 import scipy
 import sklearn.metrics
@@ -183,6 +182,8 @@ def get_scheduler(scheduler, optimizer, batches):
     return scheduler
 
 def print_schedule(train_batches, scheduler):
+    import plotext
+
     scheduler = copy.deepcopy(scheduler)
     
     lrs = []

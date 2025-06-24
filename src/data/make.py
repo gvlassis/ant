@@ -1,7 +1,5 @@
 import os
 import argparse
-import transformers
-import tokenmonster
 import utils_data
 import torch
 
@@ -17,8 +15,10 @@ args=parser.parse_args()
 os.makedirs(args.DIR, exist_ok=True)
 
 if args.tokenizer_type=="tokenizers":
+    import transformers
     tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
 elif args.tokenizer_type=="tokenmonster":
+    import tokenmonster
     tokenizer = tokenmonster.load_multiprocess_safe(args.tokenizer)
 
 print("💾 Loading splits")

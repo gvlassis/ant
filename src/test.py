@@ -4,7 +4,6 @@ import models.utils_models
 import torch
 import data.utils_data
 import utils
-import transformers
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("PATH", help="Path of the model to be used", type=os.path.abspath)
@@ -27,6 +26,7 @@ print("🧠 Initializing model")
 model, _ = models.utils_models.get_model_optimizers(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, "rope", 0.02, 0.5, 0.5, 0.001, 0.001, 0.001, "adam", 0, False, (0.9, 0.95), 0, args.context, False, True, False, "flash", True, None, False, "rms_learned", True)
 model.load_state_dict(torch.load(args.PATH, weights_only=True))
 
+# import transformers
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2")
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-medium")
 # model = transformers.GPT2LMHeadModel.from_pretrained("gpt2-large")

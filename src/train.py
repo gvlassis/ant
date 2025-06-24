@@ -5,14 +5,9 @@ import data.utils_data
 import models.utils_models
 import models.transformer
 import utils
-import fvcore.nn
-import torchview
 import logging
 torch._logging.set_logs(all=logging.ERROR)
 import contextlib
-# import lm_eval
-import transformers
-import tokenmonster
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
@@ -154,17 +149,25 @@ val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device,
 
 if master and args.verbose: print("🧠 Initializing model")
 model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp)
+
 if args.pre_norm: model = models.utils_models.weight_norm(model)
-if args.info:
+
+if master and args.info:
+    import fvcore.nn
+
     batch_X, _ = next(train_iterator)
     # Not having batch dimension can cause problems (e.g. BatchNorm)
     X = batch_X[:1]
     input_data = data.utils_data.transform(args.dataset, X.to(model_device))
-    if master: print(fvcore.nn.flop_count_table(fvcore.nn.FlopCountAnalysis(model, input_data), max_depth=3, show_param_shapes=False))
-if args.graph:
+    print(fvcore.nn.flop_count_table(fvcore.nn.FlopCountAnalysis(model, input_data), max_depth=3, show_param_shapes=False))
+
+if master and args.graph:
+    import torchview
+
     batch_X, _ = next(train_iterator)
     input_data = data.utils_data.transform(args.dataset, batch_X.to(model_device))
-    if master: torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
+    torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
+
 # Get the parameters' names before DDP/compile
 train_stats_header = models.utils_models.get_train_stats_header(model)
 
@@ -186,11 +189,6 @@ for opt in opts:
     scheduler = utils.get_scheduler(args.scheduler, opt, args.train_batches)
     schedulers.append(scheduler)
     if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
-
-if args.tokenizer_type=="tokenizers":
-    tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
-elif args.tokenizer_type=="tokenmonster":
-    tokenizer = tokenmonster.load_multiprocess_safe(args.tokenizer)
 
 if master:
     if args.verbose: print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
@@ -354,10 +352,20 @@ for train_batch in range(args.train_batches):
                 file.write(" %f %f" % (train_ppl, val_ppl))
 
         if lm_eval_tasks:
-            lm_eval_results = lm_eval.simple_evaluate(model = data.utils_data.LMEvalWrapper(args.tokenizer_type, tokenizer, args.eot_id, model, args.dtype),
+            import lm_eval
+
+            if args.tokenizer_type=="tokenizers":
+                import transformers
+                tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
+            elif args.tokenizer_type=="tokenmonster":
+                import tokenmonster
+                tokenizer = tokenmonster.load_multiprocess_safe(args.tokenizer)
+
+            lm_eval_results = lm_eval.simple_evaluate(model = data.utils_data.lm_eval_wrapper(args.tokenizer_type, tokenizer, args.eot_id, model, args.dtype),
                                                       tasks = lm_eval_tasks,
                                                       num_fewshot = 0,
                                                       batch_size = 1, # Higher is not supported
+                                                      device = model_device, # Defaults to cuda
                                                       use_cache = None, # Do NOT cache results
                                                       rewrite_requests_cache = True, # Dataset requests cache
                                                       limit = None, # Total samples. Be careful, some datasets are very noisy and/or not even shuffled

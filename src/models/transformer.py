@@ -2,7 +2,6 @@ import torch
 from . import mlp
 from math import sqrt
 import math
-import flash_attn
 
 SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 POS_TYPES = ["learned", "sinusoidal", "rope", "alibi"]
@@ -137,6 +136,8 @@ def sdpa_pytorch(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
 
 # (batches*)heads/groups*context*d_head
 def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
+    import flash_attn
+    
     # FlashAttention2 only supports float scale
     if isinstance(scale, torch.Tensor):
         Q *= scale
@@ -160,7 +161,7 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
     
     if swa is None:
         swa = (-1,-1)
-
+    
     Y = flash_attn.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
     Y = Y.to(Q.dtype)
     
