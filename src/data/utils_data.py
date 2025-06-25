@@ -495,9 +495,11 @@ def lm_eval_wrapper(tokenizer_type, tokenizer, eot_id, model, dtype):
 
                 self.model.eval()
                 with torch.autocast(device_type=self.device.type, dtype=self.dtype):
-                    # context*vocab_size
+                    # (1*)context*vocab_size
                     Y = self.model( X.to(self.device) )
-                
+                    # context*vocab_size
+                    Y = Y.reshape(Y.shape[-2:])
+
                 # P(T₀|C₀...Cₙ₋₁) comes from Cₙ₋₁ (boundary-1)
                 # m*vocab_size
                 logP = torch.nn.functional.log_softmax(Y[boundary-1:-1], dim=-1)

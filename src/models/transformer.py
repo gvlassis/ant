@@ -115,8 +115,12 @@ def sdpa_pytorch(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
 
     # (batches*)heads*context*context
     A__ = Q @ K.mT
-
+    
+    # batches*heads*context*context
     A_ = scale*A__
+    # (batches*)heads*context*context
+    A_ = A_.reshape(A__.shape)
+
     if alibi is not None:
         A_ = A_ + alibi
     if causal is not None:
@@ -140,7 +144,12 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
     
     # FlashAttention2 only supports float scale
     if isinstance(scale, torch.Tensor):
-        Q *= scale
+        Q_shape = Q.shape
+        # batches*heads*context*d_head
+        Q = scale*Q
+        # (batches*)heads*context*d_head
+        Q = Q.reshape(Q_shape)
+
         scale = 1
     
     # FlashAttention2 only supports BF16 and FP16
