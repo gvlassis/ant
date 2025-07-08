@@ -253,13 +253,13 @@ def get_parameter_type(parameter, suffix, parent):
 # model0: proxy
 # model: target
 # model_: A scaled (up or down) version of model0
-def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, test, warning, distributed, comp):
+def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, test, warning, comp):
     if parametrization == "np":
+        model = model_or_ddp.module if torch.distributed.is_initialized() else model_or_ddp
         input_params = list(model.emb.parameters())
         vector_params = [parameter for parameter in model.parameters() if (parameter.ndim < 2 or parameter.ndim > 3)]
         hidden_params = [parameter for parameter in model.blocks.parameters() if parameter.ndim == 2]
         # output_params = list(model.linear.parameters())
-
     else:
         layers = get_layers(model0, model_, warning)
         
@@ -328,10 +328,10 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
     elif opt=="shampoo":
         import distributed_shampoo
         
-        distributed_config = distributed_shampoo.DDPShampooConfig() if distributed else None
+        distributed_config = distributed_shampoo.DDPShampooConfig() if torch.distributed.is_initialized() else None
 
         shampoo_pt2_compile_config = distributed_shampoo.ShampooPT2CompileConfig() if comp else None
-
+        
         opts = [
             distributed_shampoo.DistributedShampoo(input_params+vector_params, lr=k_input, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True),
             distributed_shampoo.DistributedShampoo(hidden_params, lr=k_hidden, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True),
@@ -414,7 +414,7 @@ def parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_out
 
         opts = [
             torch.optim.AdamW(input_params+vector_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
-            muon.Muon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay) if distributed else muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
+            muon.Muon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay) if torch.distributed.is_initialized() else muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
             # torch.optim.AdamW(output_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True)
         ]
     

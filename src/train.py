@@ -77,26 +77,28 @@ parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", defaul
 parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
 args=parser.parse_args()
 
-torchelastic = os.getenv("TORCHELASTIC_RUN_ID") != None
-if torchelastic:
-    # If the backend is not provided, then both a gloo and nccl backend will be created
-    torch.distributed.init_process_group(backend="nccl")
-    
+if torch.distributed.is_torchelastic_launched():
     # Get environment variables set by torchrun
     WORLD_SIZE = int(os.getenv("WORLD_SIZE"))
     RANK = int(os.getenv("RANK"))
     LOCAL_RANK = int(os.getenv("LOCAL_RANK"))
-    
+    # Set global variables
     master = (RANK == 0)
-    
     model_device_index = LOCAL_RANK
-
+    model_device_type = "cuda"
+    model_device = f"{model_device_type}:{model_device_index}"
     accumulation = args.batch_size//(WORLD_SIZE*args.micro_batch_size)
+
+    # Set default "cuda" device (prevents weird bugs like with Triton, DistributedShampoo etc.) - BEFORE init()
+    torch.cuda.set_device(model_device)
+
+    # If the backend is not provided, then both a gloo and nccl backend will be created - AFTER set_device()
+    torch.distributed.init_process_group(backend="nccl")
 else:
     master = True
-
     model_device_index = args.model_device_index
-    
+    model_device_type = "cuda"
+    model_device = f"{model_device_type}:{model_device_index}"
     accumulation = args.batch_size//args.micro_batch_size
 
 subpath_dir = os.path.dirname(args.SUBPATH)
@@ -136,8 +138,6 @@ else:
     k_hidden = args.k_input
     k_output = args.k_input
 
-model_device_type = "cuda"
-model_device = f"{model_device_type}:{model_device_index}"
 if args.dataset_device_type == "cpu":
     dataset_device = "cpu"
 elif args.dataset_device_type == "cuda":
@@ -148,7 +148,8 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp)
+model_or_ddp, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, model_device, args.comp)
+model = model_or_ddp.module if torch.distributed.is_initialized() else model_or_ddp
 
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 
@@ -168,15 +169,13 @@ if master and args.graph:
     input_data = data.utils_data.transform(args.dataset, batch_X.to(model_device))
     torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
 
-# Get the parameters' names before DDP/compile
+# Get the parameters' names before compile
 train_stats_header = models.utils_models.get_train_stats_header(model)
 
 # float16 (not bfloat16) needs scaling
 scaler = torch.amp.GradScaler("cuda", enabled=(args.dtype==torch.float16))
 
-if torchelastic: model = torch.nn.parallel.DistributedDataParallel(model)
-
-# Compile after DDP
+# Compile last
 if args.comp:
     if master and args.verbose: print("⏳ Compiling")
     # mode=max-autotune gives NaN
@@ -217,22 +216,22 @@ min_train_loss = utils.INF
 min_val_loss = utils.INF
 terminate = torch.tensor(False).to(model_device)
 for train_batch in range(args.train_batches):
-    if torchelastic: torch.distributed.broadcast(terminate, src=0)
+    if torch.distributed.is_initialized(): torch.distributed.broadcast(terminate, src=0)
     if terminate:
-        if torchelastic: torch.distributed.destroy_process_group()
+        if torch.distributed.is_initialized(): torch.distributed.destroy_process_group()
         exit(1)
     
     train_batch_start = utils.get_sync_time(model_device)
     
-    model.train()
+    model_or_ddp.train()
     train_loss = torch.tensor(0.0).to(model_device)
     for micro_train_batch in range(accumulation):
         batch_train_X, batch_train_Y = next(train_iterator)
 
         # Only sync gradients in the last micro_train_batch
-        with (model.no_sync() if torchelastic and micro_train_batch<accumulation-1 else contextlib.nullcontext()):
+        with (model_or_ddp.no_sync() if torch.distributed.is_initialized() and micro_train_batch<accumulation-1 else contextlib.nullcontext()):
             with torch.autocast(device_type=model_device_type, dtype=args.dtype):
-                micro_train_loss = get_loss(args.dataset, model, batch_train_X.to(model_device), batch_train_Y.to(model_device), args.label_smoothing)[1]/accumulation
+                micro_train_loss = get_loss(args.dataset, model_or_ddp, batch_train_X.to(model_device), batch_train_Y.to(model_device), args.label_smoothing)[1]/accumulation
                 train_loss += micro_train_loss.detach()
             scaler.scale(micro_train_loss).backward()
     
@@ -240,7 +239,7 @@ for train_batch in range(args.train_batches):
     train_batch_time = train_batch_end-train_batch_start
     train_time += train_batch_time
     
-    if torchelastic: torch.distributed.all_reduce(train_loss, op=torch.distributed.ReduceOp.AVG)
+    if torch.distributed.is_initialized(): torch.distributed.all_reduce(train_loss, op=torch.distributed.ReduceOp.AVG)
     train_loss = train_loss.item()
 
     if (train_batch % args.update_freq == 0 or train_batch == args.train_batches-1) and master:
@@ -257,11 +256,7 @@ for train_batch in range(args.train_batches):
         val_loss = data.utils_data.approximate_loss(args.val_batches, val_iterator, args.dataset, model, args.dtype)
         if val_loss < min_val_loss:
             min_val_loss = val_loss
-            if args.save_model:
-                if torchelastic:
-                    torch.save(model.module.state_dict(), model_path)
-                else:
-                    torch.save(model.state_dict(), model_path)
+            if args.save_model: torch.save(model.state_dict(), model_path)
             val_loss_decorated = "\x1b[36;1m%12.12s\x1b[0m" % ("%f" % val_loss)
         else:
             val_loss_decorated = "%12.12s" % ("%f" % val_loss)
@@ -275,11 +270,7 @@ for train_batch in range(args.train_batches):
             file.write("%d %f %f %f %d %s\n" % (train_batch, schedulers[0].get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
         
         if (not thresh_crossed) and (val_loss < args.thresh):
-            if torchelastic:
-                torch.save(model.module.state_dict(), thresh_path)
-            else:
-                torch.save(model.state_dict(), thresh_path)
-            
+            torch.save(model.state_dict(), thresh_path)
             thresh_crossed = True
     
     if extra and (train_batch % args.extra_freq == 0 or train_batch == args.train_batches-1) and master:
@@ -421,5 +412,5 @@ for train_batch in range(args.train_batches):
 
 if master and (not args.verbose): print("%f" % val_loss, end="")
 
-if torchelastic: torch.distributed.destroy_process_group()
+if torch.distributed.is_initialized(): torch.distributed.destroy_process_group()
 exit(0)

@@ -10,7 +10,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, max_context, test_parametrization, warning, distributed, backend, device, comp):
+def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, max_context, test_parametrization, warning, backend, device, comp):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -69,12 +69,14 @@ def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input,
         model = ngpt.nGPT(vocab_size, num_blocks, heads=heads, d_head=ζ*d_head0, backend=backend, std=c_input, test=test_parametrization)
         model_ = None
     
-    # Move model to device BEFORE optimizer(model.parameters())
     model = model.to(device)
+    # AFTER .to()
+    model_or_ddp = torch.nn.parallel.DistributedDataParallel(model) if torch.distributed.is_initialized() else model
+    
+    # AFTER DDP()
+    opts = parametrizations.parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, test_parametrization, warning, comp)
 
-    opts = parametrizations.parametrize(model0, model, model_, parametrization, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, test_parametrization, warning, distributed, comp)
-
-    return model, opts
+    return model_or_ddp, opts
 
 def weight_norm(model):
     for parameter_name, parameter in model.named_parameters():

@@ -16,9 +16,11 @@ parser.add_argument("--context", type=int, default=1024)
 
 parser.add_argument("--block", help="Transformer block whose output we are checking", type=int, default=-1)
 parser.add_argument("--run", default="adam")
+
+parser.add_argument("--device", default="cuda:0")
 args=parser.parse_args()
 
-device = "cuda:0"
+device = args.device
 
 print("💾 Loading dataset")
 iterator = data.utils_data.get_iterator(args.dataset, "train", "cpu", args.batch_size, args.context)
