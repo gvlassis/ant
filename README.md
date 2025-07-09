@@ -11,8 +11,8 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 4) The PSGD, DistributedShampoo, AdEMAMix, SOAP, Muon and Scion optimizers
 5) [μP](https://www.microsoft.com/en-us/research/blog/%C2%B5transfer-a-technique-for-hyperparameter-tuning-of-enormous-neural-networks/) for zero-shot hyperparameter transfer
 6) Downstream evaluations (HellaSwag, ARC etc.) through lm_eval during training
-7) Model summary (parameters and FLOPS) and block diagram visualization
-8) Offline logging in simple .dat files
+7) Model summary (parameters and FLOPS) and computational graph visualization
+8) Offline logging of gradients and weights in simple .dat files
 9) Attention heatmaps
 10) Plotting through PGFPlots
 11) Distributed Data Parallel, torch.compile and Automatic Mixed Precision
