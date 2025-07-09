@@ -17,4 +17,12 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 10) Plotting through PGFPlots
 11) Distributed Data Parallel, torch.compile and Automatic Mixed Precision
 
+![](./res/log.png)
+
+![](./res/graph.png)
+
+![](./res/stats.png)
+
+![](./res/attention.png)
+
 ## Getting Started
