@@ -39,12 +39,15 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 </div>
 
 ## Getting Started
-1)  Clone the repo:
+1) Clone the repo:
 
         git clone https://github.com/gvlassis/ant.git
 
-
-2)  Install [PyTorch](https://pytorch.org/get-started/locally/) and [FlashAttention](https://github.com/Dao-AILab/flash-attention).
-3)  Install `requirements.txt`:
+2) Install [PyTorch](https://pytorch.org/get-started/locally/) and [FlashAttention](https://github.com/Dao-AILab/flash-attention).
+3) Install `requirements.txt`:
 
         pip install -r requirements.txt
+
+4) Prepare the dataset via `./src/data/make.py`. The dataset is first downloaded from Hugging Face, processed, and then saved as tensors in .pt files. If you are lazy, you can also directly [download](https://drive.google.com/drive/folders/1gje5UpFHehY-huibLdOKJWSTeSHRrSmU?usp=drive_link) the artifacts of the following command.
+
+        python ./src/data/make.py --dataset climbmix10m
