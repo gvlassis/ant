@@ -35,7 +35,7 @@ parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="clim
 parser.add_argument("--vocab_size", type=int, default=32000)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization, as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522). np (No Parametrization) means that the initialization is handled internally by the model.", choices=models.parametrizations.PARAMETRIZATIONS, default="np")
-parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
+parser.add_argument("--zeta", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
 
 parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=False)
@@ -148,7 +148,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model_or_ddp, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, model_device, args.comp)
+model_or_ddp, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.zeta, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, model_device, args.comp)
 model = model_or_ddp.module if torch.distributed.is_initialized() else model_or_ddp
 
 if args.pre_norm: model = models.utils_models.weight_norm(model)

@@ -5,10 +5,10 @@ import torch
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("DIR", help="The directory which will contain train_X.pt, train_Y.pt, val_X.pt, val_Y.pt, test_X.pt, test_Y.pt", type=os.path.abspath)
-parser.add_argument("--dataset", choices=utils_data.DATASETS, default="shakespearefirstfolio")
-parser.add_argument("--tokenizer_type", choices=utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenizers")
-parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="gpt2")
-parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=50256)
+parser.add_argument("--dataset", choices=utils_data.DATASETS, default="climbmix10m")
+parser.add_argument("--tokenizer_type", choices=utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenmonster")
+parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
+parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
 parser.add_argument("--cores", help="CPU cores used by datasets.Dataset.map(num_proc=).", type=int, default=os.cpu_count()//2)
 args=parser.parse_args()
 

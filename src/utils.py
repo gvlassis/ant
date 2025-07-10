@@ -67,8 +67,8 @@ def get_sync_time(device):
     return round(time.time()*1e6)
 
 # Based on https://github.com/gvlassis/bashrc_utils/blob/main/src/utils.sh
-def us_to_human_friendly(μs):
-    ms = μs//1000
+def us_to_human_friendly(micros):
+    ms = micros//1000
 
     s = ms//1000
     
@@ -98,14 +98,14 @@ def us_to_human_friendly(μs):
         # ms=ABC
         if ms > 100:
             human_friendly = "%dms" % ms
-        # ms=AB, μs=ABCDE
+        # ms=AB, micros=ABCDE
         elif ms > 10:
-            human_friendly = "%d.%sms" % (ms,str(μs)[2])
-        # ms=A, μs=ABCD
+            human_friendly = "%d.%sms" % (ms,str(micros)[2])
+        # ms=A, micros=ABCD
         else:
-            human_friendly = "%d.%sms" % (ms,str(μs)[1:3])
+            human_friendly = "%d.%sms" % (ms,str(micros)[1:3])
     else:
-        human_friendly = "%dμs" % μs
+        human_friendly = "%dμs" % micros
 
     return human_friendly
 
@@ -228,18 +228,6 @@ def l2(X):
     l2s = X.norm(dim=-1)
 
     return l2s.mean()
-
-# (...*)rows*cols
-def invsimp(X, normalized=True):
-    rows = X.shape[-2]
-
-    # (...*)rows
-    invsimps = 1/torch.sum(X**2, dim=-1)
-
-    maximums = torch.arange(1, rows+1)
-    denominators = maximums if normalized else 1
-
-    return (invsimps/denominators).mean()
 
 # (...*)rows*cols
 def invsimp(X, normalized=True):

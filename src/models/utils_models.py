@@ -10,27 +10,27 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, max_context, test_parametrization, warning, backend, device, comp):
+def get_model_opts(vocab_size=32000, family="transformer", parametrization="np", zeta=16, scale_type="1/sqrt(d)", c_input=0.02, c_hidden=0.02, c_output=0.02, k_input=1e-3, k_hidden=1e-3, k_output=1e-3, opt="adam", momentum=0.9, beta2=0.95, beta3=0.98, alpha=5, gamma=0.025, eps=1e-8, weight_decay=0, max_context=1024, test_parametrization=False, warning=True, backend="pytorch", device="cuda:0", comp=False):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
         model0 = mlp.MLP3L(8, 16, 16, 1)
-        model = mlp.MLP3L(8, 16*ζ, 16*ζ, 1)
+        model = mlp.MLP3L(8, 16*zeta, 16*zeta, 1)
         model_ = mlp.MLP3L(8, 16*2, 16*2, 1)
 
     elif family=="mlp_image":
         model0 = mlp.MLP3L_image(d1=16, d2=16)
-        model = mlp.MLP3L_image(d1=16*ζ, d2=16*ζ)
+        model = mlp.MLP3L_image(d1=16*zeta, d2=16*zeta)
         model_ = mlp.MLP3L_image(d1=16*2, d2=16*2)
 
     elif family=="vgg":
         model0 = vgg.VGG(out_channels0=4)
-        model = vgg.VGG(out_channels0=4*ζ)
+        model = vgg.VGG(out_channels0=4*zeta)
         model_ = vgg.VGG(out_channels0=4*2)
 
     elif family=="resnet":
         model0 = resnet.ResNet(out_channels0=4)
-        model = resnet.ResNet(out_channels0=4*ζ)
+        model = resnet.ResNet(out_channels0=4*zeta)
         model_ = resnet.ResNet(out_channels0=4*2)
 
     elif family=="vit":
@@ -49,7 +49,7 @@ def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input,
         l1_type = "linear"
         classes = 10
         model0 = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
-        model = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*ζ, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
+        model = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*zeta, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
         model_ = vit.ViT(channels, max_res, patch_size, num_blocks, heads, 4*2, scale_type, exp_factor, dropout, pos_type, all_pos, norm_type, bias, act, l1_type, classes)
 
     elif family=="transformer":
@@ -58,7 +58,7 @@ def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input,
         d_head0 = 8
         ratio = 3
         model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False)
-        model = transformer.Transformer(vocab_size, num_blocks, heads, ζ*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=test_parametrization)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, zeta*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=test_parametrization)
         model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False)
 
     elif family=="ngpt":
@@ -66,7 +66,7 @@ def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input,
         heads = 12
         d_head0 = 4
         model0 = None
-        model = ngpt.nGPT(vocab_size, num_blocks, heads=heads, d_head=ζ*d_head0, backend=backend, std=c_input, test=test_parametrization)
+        model = ngpt.nGPT(vocab_size, num_blocks, heads=heads, d_head=zeta*d_head0, backend=backend, std=c_input, test=test_parametrization)
         model_ = None
     
     model = model.to(device)
