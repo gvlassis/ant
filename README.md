@@ -54,4 +54,11 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 
         python ./src/data/make.py --dataset climbmix10m
 
-5)
+5) Train a neural network via `./src/train.py`. For training on `cuda:0`:
+
+        # If you are not using μP, k_input is the learning rate
+        python ./src/train.py --opt muon --micro_batch_size 32 --train_batches 2000 --k_input 3e-2 --momentum 0.95 --model_device_index 0 ./out/test
+
+   A lot of settings (e.g. depth, number of heads) are configured in `./src/models/utils_models.py/get_model_opts()` and `./src/models/transformer.py`. For one node with 4 GPUs:
+
+         OMP_NUM_THREADS=1 torchrun --standalone --nproc_per_node=4 ./src/train.py --opt shampoo --micro_batch_size 32 --train_batches 2000 --k_input 3e-3 --momentum 0.95 --beta2 0.95 --eps 1e-10 ./out/test
