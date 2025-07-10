@@ -15,7 +15,8 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 8) Offline logging of gradients and weights in simple .dat files
 9) Attention heatmaps
 10) Plotting through PGFPlots
-11) Distributed Data Parallel, torch.compile and Automatic Mixed Precision
+11) Pure PyTorch attention, FlashAttention, FlexAttention and cuDNN attention with RoPE, ALiBi and Sliding Window Attention (SWA)
+12) Distributed Data Parallel, torch.compile and Automatic Mixed Precision
 
 <div align="center">
   <em>Model summary, learning rate schedule and logging in the terminal.</em><br>
