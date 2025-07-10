@@ -53,9 +53,9 @@ def numel(elem):
         return 1
 
 def str_to_bool(string):
-    if string == "True":
+    if string in ["True", "true", "1"]:
         boolean = True
-    elif string == "False":
+    elif string in ["False", "false", "0"]:
         boolean = False
 
     return boolean
@@ -159,23 +159,43 @@ def generate_text(starting_string, tokenizer, unk_id, eot_id, model, context=128
     
     print(string)
 
+def split_to_ints(total, ratios):
+    # final or final-1
+    floored = [int(ratio*total) for ratio in ratios]
+
+    total_floored = sum(floored)
+    remainder = total - total_floored
+
+    # Distribute remainder to floored with biggest decimals
+    decimals = [ratios[i]*total-floored[i] for i in range(len(ratios))]
+    indices = numpy.argsort(decimals)[:(-remainder-1):-1]
+    for i in indices:
+        floored[i] += 1
+
+    assert total==sum(floored)
+
+    return floored
+
 def get_scheduler(scheduler, optimizer, batches):
     if scheduler == "trapezoidal":
+        warmup_iters, constant_iters, cooldown_iters = split_to_ints(batches, [0.05, 0.75, 0.20])
         scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
-                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=0.05*batches),
-                                                          torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=batches-0.05*batches-0.2*batches),
-                                                          torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=0.2*batches)],
-                                                          milestones=[0.05*batches, batches-0.2*batches])
+                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=warmup_iters),
+                                                          torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=constant_iters),
+                                                          torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=cooldown_iters)],
+                                                          milestones=[warmup_iters, warmup_iters+constant_iters])
     elif scheduler == "1cycle":
+        warmup_iters, cooldown_iters = split_to_ints(batches, [0.50, 0.50])
         scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
-                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=batches/2),
-                                                          torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=batches/2)],
-                                                          milestones=[batches/2])
+                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=warmup_iters),
+                                                          torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1, end_factor=0, total_iters=cooldown_iters)],
+                                                          milestones=[warmup_iters])
     elif scheduler == "cos":
+        warmup_iters, annealing_iters = split_to_ints(batches, [0.05, 0.95])
         scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer,
-                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=0.01*batches),
-                                                          torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=batches-0.01*batches, eta_min=0)],
-                                                          milestones=[0.01*batches])
+                                                          [torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.001, end_factor=1, total_iters=warmup_iters),
+                                                          torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=annealing_iters, eta_min=0)],
+                                                          milestones=[warmup_iters])
     elif scheduler == "constant":
         scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1, total_iters=batches)
         
