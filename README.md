@@ -39,3 +39,12 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 </div>
 
 ## Getting Started
+1)  Clone the repo:
+
+        git clone https://github.com/gvlassis/ant.git
+
+
+2)  Install [PyTorch](https://pytorch.org/get-started/locally/) and [FlashAttention](https://github.com/Dao-AILab/flash-attention).
+3)  Install `requirements.txt`:
+
+        pip install -r requirements.txt
