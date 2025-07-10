@@ -39,6 +39,8 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 </div>
 
 ## Getting Started
+> [!TIP]
+> All scripts have a help menu available via `--help`. In cases this is not enough, it is recommended that you look at the code (self-documenting) directly. Alternatively, if you are a vibe coder 🤖, you can try feeding the whole codebase to an LLM (e.g. via https://uithub.com/gvlassis/ant), or a coding agent (e.g. Codex CLI).
 1) Clone the repo:
 
         git clone https://github.com/gvlassis/ant.git
@@ -48,6 +50,8 @@ ant is a PyTorch-based Deep Learning framework. It is inspired by [nanoGPT](http
 
         pip install -r requirements.txt
 
-4) Prepare the dataset via `./src/data/make.py`. The dataset is first downloaded from Hugging Face, processed, and then saved as tensors in .pt files. If you are lazy, you can also directly [download](https://drive.google.com/drive/folders/1gje5UpFHehY-huibLdOKJWSTeSHRrSmU?usp=drive_link) the artifacts of the following command.
+4) Prepare the dataset via `./src/data/make.py`. The dataset is first downloaded from Hugging Face, processed, and then saved as tensors in .pt files. If you are lazy 🦥, you can also directly [download](https://drive.google.com/drive/folders/1gje5UpFHehY-huibLdOKJWSTeSHRrSmU?usp=drive_link) the artifacts of the following command.
 
         python ./src/data/make.py --dataset climbmix10m
+
+5)
