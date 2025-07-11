@@ -1,4 +1,32 @@
 import torch
+from .quantization import QuantizedLinear, QUANTIZER_CLASSES
+
+
+# QuEST quantizer set as the default
+DEFAULT_QUANTIZER = "HalfHadamardTrustQuantizer"
+
+
+def get_quantizers(quantization_bits):
+    """
+    16/32 bits → NoQuantizer; otherwise `HalfHadamardTrustQuantizer` as default.
+    To plug in other quantizers, modify this function.
+    """
+    if isinstance(quantization_bits, tuple):
+        weight_bits, activation_bits = quantization_bits
+    else:
+        weight_bits = activation_bits = quantization_bits
+
+    def _select(bits):
+        return (
+            QUANTIZER_CLASSES["NoQuantizer"]()
+            if bits in (16, 32)
+            else QUANTIZER_CLASSES[DEFAULT_QUANTIZER](bits=bits)
+        )
+
+    weight_quantizer = _select(weight_bits)
+    activation_quantizer = _select(activation_bits)
+
+    return weight_quantizer, activation_quantizer
 
 # Normalizes on the hypersphere along dim
 # (s1*...*)s-1
@@ -44,7 +72,7 @@ class Abs(torch.nn.Module):
         return y
 
 class GLU(torch.nn.Module):
-    def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU()):
+    def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU(), quantization_bits=16):
         super().__init__()
 
         self.d0 = d0
@@ -52,9 +80,13 @@ class GLU(torch.nn.Module):
         self.bias = bias
         self.act = act
         
-        self.gate = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+        # Get quantizers
+        weight_quantizer, activation_quantizer = get_quantizers(quantization_bits)
+        
+        gate_linear = QuantizedLinear(d0, d1, bias=bias, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
+        self.gate = torch.nn.Sequential(gate_linear, act)
 
-        self.proj = torch.nn.Linear(d0, d1, bias)
+        self.proj = QuantizedLinear(d0, d1, bias=bias, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
 
     def forward(self, x):
         y = self.gate(x) * self.proj(x)
@@ -62,7 +94,7 @@ class GLU(torch.nn.Module):
         return y
 
 class MLP2L(torch.nn.Module):
-    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False):
+    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False, quantization_bits=16):
         super().__init__()
 
         self.d0 = d0
@@ -74,14 +106,18 @@ class MLP2L(torch.nn.Module):
         self.l1_type = l1_type
         self.norm_type = norm_type
 
+        # Get quantizers
+        weight_quantizer, activation_quantizer = get_quantizers(quantization_bits)
+
         if l1_type=="linear":
-            self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+            l1_linear = QuantizedLinear(d0, d1, bias=bias, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
+            self.l1 = torch.nn.Sequential(l1_linear, act)
         elif l1_type=="glu":
-            self.l1 = GLU(d0, d1, bias, act)
+            self.l1 = GLU(d0, d1, bias, act, quantization_bits)
 
         self.norm = get_norm(norm, norm_type, d1, bias)
 
-        self.l2 = torch.nn.Linear(d1, d2, bias)
+        self.l2 = QuantizedLinear(d1, d2, bias=bias, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
 
     def forward(self, x):
         a1 = self.l1(x)

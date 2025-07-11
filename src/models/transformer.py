@@ -1,7 +1,8 @@
 import torch
 from . import mlp
 from math import sqrt
-import math
+from .quantization import QuantizedLinear
+from .mlp import get_quantizers
 
 SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 POS_TYPES = ["learned", "sinusoidal", "rope", "alibi"]
@@ -255,7 +256,7 @@ def test_sdpa():
     print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True, quantization_bits=16):
         super().__init__()
 
         self.heads = heads
@@ -276,12 +277,15 @@ class MHSA(torch.nn.Module):
             elif scale_type=="1/d":
                 self.scale = 1/d_head
         
-        # Packing QKV gives negligible speed gains, while not allowing GQA, hurting code clarity and having side effects with μP
-        self.lq = torch.nn.Linear(self.d, self.d, bias=False)
-        self.lk = torch.nn.Linear(self.d, self.d_KV, bias=False)
-        self.lv = torch.nn.Linear(self.d, self.d_KV, bias=False)
+        # Get quantizers
+        weight_quantizer, activation_quantizer = get_quantizers(quantization_bits)
         
-        self.lo = torch.nn.Linear(self.d, self.d, bias=False)
+        # Packing QKV gives negligible speed gains, while not allowing GQA, hurting code clarity and having side effects with μP
+        self.lq = QuantizedLinear(self.d, self.d, bias=False, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
+        self.lk = QuantizedLinear(self.d, self.d_KV, bias=False, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
+        self.lv = QuantizedLinear(self.d, self.d_KV, bias=False, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
+        
+        self.lo = QuantizedLinear(self.d, self.d, bias=False, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
 
     # (batches*)context*d
     def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash"):
@@ -331,7 +335,7 @@ class MHSA(torch.nn.Module):
 
 # Pre-Norm
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=3, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=3, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, quantization_bits=16):
         super().__init__()
 
         self.heads = heads
@@ -348,11 +352,11 @@ class Block(torch.nn.Module):
         self.act = act
         self.l1_type = l1_type
         
-        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm)
+        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm, quantization_bits)
         self.pre_att_norm = mlp.get_norm(pre_att_norm, norm_type, self.d, bias)
         self.out_att_norm = mlp.get_norm(out_att_norm, norm_type, self.d, bias)
 
-        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm)
+        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm, quantization_bits)
         self.pre_mlp_norm = mlp.get_norm(pre_mlp_norm, norm_type, self.d, bias)
         self.out_mlp_norm = mlp.get_norm(out_mlp_norm, norm_type, self.d, bias)
         
@@ -381,7 +385,7 @@ class Block(torch.nn.Module):
             return Z__, A__, A_, A
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False, quantization_bits=16):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -414,11 +418,13 @@ class Transformer(torch.nn.Module):
             pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
-        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm) for _ in range(num_blocks)])
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm, quantization_bits) for _ in range(num_blocks)])
         
         self.out_norm = mlp.get_norm(out_norm, norm_type, self.d, bias)
         
-        self.linear = torch.nn.Linear(self.d, vocab_size, bias=False)
+        # Get quantizers for output linear layer
+        weight_quantizer, activation_quantizer = get_quantizers(quantization_bits)
+        self.linear = QuantizedLinear(self.d, vocab_size, bias=False, weight_quantizer=weight_quantizer, activation_quantizer=activation_quantizer)
 
         if weight_tying: self.emb.weight = self.linear.weight
         
@@ -430,9 +436,9 @@ class Transformer(torch.nn.Module):
             parent_name, _, suffix = parameter_name.rpartition(".")
             parent = self.get_submodule(parent_name)
 
-            if isinstance(parent, (torch.nn.Linear, torch.nn.Embedding)) and suffix=="weight":
+            if isinstance(parent, (torch.nn.Linear, torch.nn.Embedding, QuantizedLinear)) and suffix=="weight":
                 torch.nn.init.normal_(parameter, 0, std)
-            elif isinstance(parent, (torch.nn.Linear, torch.nn.LayerNorm)) and suffix=="bias":
+            elif isinstance(parent, (torch.nn.Linear, torch.nn.LayerNorm, QuantizedLinear)) and suffix=="bias":
                 torch.nn.init.zeros_(parameter)
             elif isinstance(parent, (torch.nn.LayerNorm, torch.nn.RMSNorm)) and suffix=="weight":
                 torch.nn.init.ones_(parameter)

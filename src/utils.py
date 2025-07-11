@@ -53,12 +53,12 @@ def numel(elem):
         return 1
 
 def str_to_bool(string):
-    if string == "True":
-        boolean = True
-    elif string == "False":
-        boolean = False
-
-    return boolean
+    if string in ["True", "true", "1", 1]:
+        return True
+    elif string in ["False", "false", "0", 0]:
+        return False
+    else:
+        raise ValueError(f"Invalid boolean string: '{string}'. Expected 'True' or 'False'.")
 
 # Time logging causes negligible performance impact (~3%)
 def get_sync_time(device):

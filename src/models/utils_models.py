@@ -10,7 +10,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, max_context, test_parametrization, warning, distributed, backend, device, comp):
+def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, opt, momentum, beta2, beta3, alpha, gamma, eps, weight_decay, max_context, test_parametrization, warning, distributed, backend, device, comp, quantization_bits=16):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -57,9 +57,9 @@ def get_model_opts(vocab_size, family, parametrization, ζ, scale_type, c_input,
         heads = 6
         d_head0 = 8
         ratio = 3
-        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False)
-        model = transformer.Transformer(vocab_size, num_blocks, heads, ζ*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=test_parametrization)
-        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False)
+        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False, quantization_bits=quantization_bits)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, ζ*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=test_parametrization, quantization_bits=quantization_bits)
+        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False, quantization_bits=quantization_bits)
 
     elif family=="ngpt":
         num_blocks = 12

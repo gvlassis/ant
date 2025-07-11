@@ -22,3 +22,8 @@ src/create_study.py
 src/optimization.py
 src/models/ngpt2.py
 src/models/ngpt3.py
+
+sweep_results
+wandb
+*.sh
+.gitignore

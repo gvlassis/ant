@@ -9,6 +9,14 @@ import logging
 torch._logging.set_logs(all=logging.ERROR)
 import contextlib
 
+# Wandb import with graceful fallback
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    wandb = None
+
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
 parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=True)
@@ -32,11 +40,19 @@ parser.add_argument("--hellaswag", help="As an extra, evaluate the HellaSwag NOR
 parser.add_argument("--piqa", help="As an extra, evaluate the PIQA NORMALIZED accuracy", type=utils.str_to_bool, default=False)
 
 parser.add_argument("--dataset", choices=data.utils_data.DATASETS, default="climbmix10m")
-parser.add_argument("--vocab_size", type=int, default=32000)
+parser.add_argument("--vocab_size", type=int, default=51000)
 parser.add_argument("--family", help="Model architecture", choices=models.utils_models.FAMILIES, default="transformer")
 parser.add_argument("--parametrization", help="(a)bc parametrization, as defined in Tensor Programs IV (https://arxiv.org/abs/2011.14522). np (No Parametrization) means that the initialization is handled internally by the model.", choices=models.parametrizations.PARAMETRIZATIONS, default="np")
 parser.add_argument("--ζ", help="Width scaling factor", type=int, default=16)
 parser.add_argument("--scale_type", help="Scaling factor applied prior to softmax", choices=models.transformer.SCALE_TYPES, default="1/sqrt(d)")
+
+# Quantization arguments
+
+# one value of quantization_bits can be set both for weights and activations, 
+# or two values can be set separately.
+parser.add_argument("--quantization_bits", help="Model quantization precision", type=int, default=16)
+parser.add_argument("--weight_bits", help="Weight quantizer bit-width (overrides --quantization_bits if set)", type=int, default=None)
+parser.add_argument("--activation_bits", help="Activation quantizer bit-width (overrides --quantization_bits if set)", type=int, default=None)
 
 parser.add_argument("--decoupling", help="Decouples c/k_input, c/k_hidden and c/k_output. If coupled, they are controlled by c/k_input.", type=utils.str_to_bool, default=False)
 parser.add_argument("--c_input", type=float, default=0.02)
@@ -75,7 +91,26 @@ parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backe
 parser.add_argument("--tokenizer_type", choices=data.utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenmonster")
 parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
 parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
-args=parser.parse_args()
+
+# Wandb arguments
+parser.add_argument("--wandb", help="Use Weights & Biases logging", type=utils.str_to_bool, default=False)
+parser.add_argument("--wandb_project", help="Wandb project name", type=str, default="scaling-laws")
+parser.add_argument("--wandb_name", help="Wandb run name", type=str, default=None)
+
+args = parser.parse_args()
+
+# If weight_bits or activation_bits are set, use them,
+# otherwise use the quantization_bits value for both weight and activations.
+# Create argument quantization_bits as a tuple of (weight_bits, activation_bits).
+
+if args.weight_bits is not None or args.activation_bits is not None:
+    # Fallback to global value when one of the two is unspecified
+    if args.weight_bits is None:
+        args.weight_bits = args.quantization_bits
+    if args.activation_bits is None:
+        args.activation_bits = args.quantization_bits
+
+    args.quantization_bits = (args.weight_bits, args.activation_bits)
 
 torchelastic = os.getenv("TORCHELASTIC_RUN_ID") != None
 if torchelastic:
@@ -148,7 +183,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp)
+model, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.ζ, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, torchelastic, args.backend, model_device, args.comp, args.quantization_bits)
 
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 
@@ -189,6 +224,79 @@ for opt in opts:
     scheduler = utils.get_scheduler(args.scheduler, opt, args.train_batches)
     schedulers.append(scheduler)
     if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
+
+# Initialize Wandb
+use_wandb = args.wandb and WANDB_AVAILABLE and master
+if use_wandb:
+    # Create run name if not provided
+    if isinstance(args.quantization_bits, tuple):
+        bits_str = f"w{args.quantization_bits[0]}_a{args.quantization_bits[1]}"
+    else:
+        bits_str = f"w{args.quantization_bits}_a{args.quantization_bits}"
+
+    wandb_run_name = args.wandb_name
+    if wandb_run_name is None:
+        base_name = os.path.basename(args.SUBPATH)
+        # Build a readable bits string
+
+        wandb_run_name = f"{args.family}_ζ{args.ζ}_{bits_str}_{base_name}"
+    else:
+        wandb_run_name += f"_{bits_str}"
+    
+    # Initialize wandb
+    wandb.init(
+        project=args.wandb_project,
+        name=wandb_run_name,
+        config={
+            # Model architecture
+            "family": args.family,
+            "vocab_size": args.vocab_size,
+            "zeta": args.ζ,
+            "scale_type": args.scale_type,
+            "quantization_bits": args.quantization_bits,
+            
+            # Training parameters
+            "dataset": args.dataset,
+            "batch_size": args.batch_size,
+            "micro_batch_size": args.micro_batch_size,
+            "context": args.context,
+            "train_batches": args.train_batches,
+            "total_tokens": args.train_batches * args.batch_size * args.context,
+            "val_batches": args.val_batches,
+            "update_freq": args.update_freq,
+            
+            # Optimizer parameters
+            "optimizer": args.opt,
+            "scheduler": args.scheduler,
+            "k_input": k_input,
+            "k_hidden": k_hidden,
+            "k_output": k_output,
+            "momentum": args.momentum,
+            "beta2": args.beta2,
+            "beta3": args.beta3,
+            "alpha": args.alpha,
+            "gamma": args.gamma,
+            "eps": args.eps,
+            "weight_decay": args.weight_decay,
+            "label_smoothing": args.label_smoothing,
+            
+            # Model parameters
+            "parametrization": args.parametrization,
+            "c_input": c_input,
+            "c_hidden": c_hidden,
+            "c_output": c_output,
+            
+            # Hardware/training setup
+            "dtype": str(args.dtype),
+            "backend": args.backend,
+            "comp": args.comp,
+            "weight_bits": args.weight_bits if hasattr(args, "weight_bits") else args.quantization_bits,
+            "activation_bits": args.activation_bits if hasattr(args, "activation_bits") else args.quantization_bits,
+        }
+    )
+    
+elif args.wandb and not WANDB_AVAILABLE and master:
+    print(" Warning: Wandb logging requested but wandb not installed")
 
 if master:
     if args.verbose: print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
@@ -274,6 +382,21 @@ for train_batch in range(args.train_batches):
         with open(log_path,"a") as file:
             file.write("%d %f %f %f %d %s\n" % (train_batch, schedulers[0].get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
         
+        # Log to Wandb
+        if use_wandb:
+            wandb_log_dict = {
+                "train_batch": train_batch,
+                "learning_rate": schedulers[0].get_last_lr()[0],
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "train_time": train_time,
+                "train_batch_time": train_batch_time,
+                "tokens_processed": train_batch * args.batch_size * args.context,
+                "is_new_best_train": train_loss < min_train_loss,
+                "is_new_best_val": val_loss < min_val_loss,
+            }
+            wandb.log(wandb_log_dict, step=train_batch)
+        
         if (not thresh_crossed) and (val_loss < args.thresh):
             if torchelastic:
                 torch.save(model.module.state_dict(), thresh_path)
@@ -281,9 +404,16 @@ for train_batch in range(args.train_batches):
                 torch.save(model.state_dict(), thresh_path)
             
             thresh_crossed = True
+            
+            # Log threshold crossing to Wandb
+            if use_wandb:
+                wandb.log({"threshold_crossed": True, "threshold_value": args.thresh}, step=train_batch)
     
     if extra and (train_batch % args.extra_freq == 0 or train_batch == args.train_batches-1) and master:
         print("━"*70)
+
+        # Initialize extra metrics dict for wandb
+        extra_metrics = {} if use_wandb else None
 
         with open(extra_path,"a") as file:
             file.write("%d %d" % (train_batch, train_time))
@@ -296,6 +426,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_rmse, val_rmse))
+            
+            if use_wandb:
+                extra_metrics.update({"train_rmse": train_rmse, "val_rmse": val_rmse})
 
         if args.nrmse:
             train_nrmse = data.utils_data.approximate_nrmse(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
@@ -305,6 +438,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_nrmse, val_nrmse))
+            
+            if use_wandb:
+                extra_metrics.update({"train_nrmse": train_nrmse, "val_nrmse": val_nrmse})
 
         if args.mae:
             train_mae = data.utils_data.approximate_mae(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
@@ -314,6 +450,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_mae, val_mae))
+            
+            if use_wandb:
+                extra_metrics.update({"train_mae": train_mae, "val_mae": val_mae})
 
         if args.nmae:
             train_nmae = data.utils_data.approximate_nmae(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
@@ -323,6 +462,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_nmae, val_nmae))
+            
+            if use_wandb:
+                extra_metrics.update({"train_nmae": train_nmae, "val_nmae": val_nmae})
 
         if args.r2:
             train_r2 = data.utils_data.approximate_r2(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
@@ -332,6 +474,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_r2, val_r2))
+            
+            if use_wandb:
+                extra_metrics.update({"train_r2": train_r2, "val_r2": val_r2})
 
         if args.acc:
             train_acc = data.utils_data.approximate_acc(args.val_batches, train_iterator,  args.dataset, model, args.dtype)*100
@@ -341,6 +486,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_acc, val_acc))
+            
+            if use_wandb:
+                extra_metrics.update({"train_acc": train_acc, "val_acc": val_acc})
 
         if args.ppl:
             train_ppl = data.utils_data.approximate_ppl(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
@@ -350,6 +498,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f %f" % (train_ppl, val_ppl))
+            
+            if use_wandb:
+                extra_metrics.update({"train_ppl": train_ppl, "val_ppl": val_ppl})
 
         if lm_eval_tasks:
             import lm_eval
@@ -383,6 +534,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f" % lambada)
+            
+            if use_wandb:
+                extra_metrics.update({"lambada": lambada})
 
         if args.arc:
             arc = lm_eval_results["results"]["arc_easy"]["acc_norm,none"]*100
@@ -390,6 +544,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f" % arc)
+            
+            if use_wandb:
+                extra_metrics.update({"arc": arc})
 
         if args.hellaswag:
             hellaswag = lm_eval_results["results"]["hellaswag"]["acc_norm,none"]*100
@@ -397,6 +554,9 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f" % hellaswag)
+            
+            if use_wandb:
+                extra_metrics.update({"hellaswag": hellaswag})
         
         if args.piqa:
             piqa = lm_eval_results["results"]["piqa"]["acc_norm,none"]*100
@@ -404,11 +564,18 @@ for train_batch in range(args.train_batches):
 
             with open(extra_path,"a") as file:
                 file.write(" %f" % piqa)
+            
+            if use_wandb:
+                extra_metrics.update({"piqa": piqa})
 
         print("━"*70)
 
         with open(extra_path,"a") as file:
             file.write("\n")
+        
+        # Log extra metrics to Wandb
+        if use_wandb and extra_metrics:
+            wandb.log(extra_metrics, step=train_batch)
     
     for opt in opts:
         scaler.step(opt)
@@ -420,6 +587,10 @@ for train_batch in range(args.train_batches):
         scheduler.step()
 
 if master and (not args.verbose): print("%f" % val_loss, end="")
+
+# Finish wandb run
+if use_wandb:
+    wandb.finish()
 
 if torchelastic: torch.distributed.destroy_process_group()
 exit(0)

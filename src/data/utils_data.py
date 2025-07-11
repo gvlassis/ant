@@ -70,10 +70,10 @@ def get_splits(dataset):
         val_dataset = train_val_dataset["test"]
         test_dataset = finewebedu_train_dataset["test"]
     elif dataset=="climbmix10m":
-        climbmix10m_train_dataset = datasets.load_dataset("gvlassis/ClimbMix10m", split="train", trust_remote_code=True, keep_in_memory=True)
-        climbmix10m_train_dataset = climbmix10m_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
+        climbmix10m_train_dataset = datasets.load_dataset("gvlassis/ClimbMix10m", split="train", trust_remote_code=True, keep_in_memory=False)
+        climbmix10m_train_dataset = climbmix10m_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=False)
         train_val_dataset = climbmix10m_train_dataset["train"]
-        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=True)
+        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=False)
         train_dataset = train_val_dataset["train"]
         val_dataset = train_val_dataset["test"]
         test_dataset = climbmix10m_train_dataset["test"]
