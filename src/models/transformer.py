@@ -329,7 +329,6 @@ class MHSA(torch.nn.Module):
         else:
             return Y, A__, A_, A
 
-# Pre-Norm
 class Block(torch.nn.Module):
     def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=3, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
         super().__init__()
@@ -356,7 +355,7 @@ class Block(torch.nn.Module):
         self.pre_mlp_norm = mlp.get_norm(pre_mlp_norm, norm_type, self.d, bias)
         self.out_mlp_norm = mlp.get_norm(out_mlp_norm, norm_type, self.d, bias)
         
-    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash"):
+    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash"):
         mhsa = self.mhsa(self.pre_att_norm(X) if self.pre_att_norm else X, causal, rope, alibi, swa, return_A, backend)
         if not return_A:
             Y = mhsa
@@ -375,10 +374,16 @@ class Block(torch.nn.Module):
         Z_ = torch.nn.functional.dropout(Z, p=self.dropout, training=self.training)
         Z__ = Y__ + Z_
 
-        if not return_A:
-            return Z__
+        if not return_res:
+            if not return_A:
+                return Z__
+            else:
+                return Z__, A__, A_, A
         else:
-            return Z__, A__, A_, A
+            if not return_A:
+                return Z__, Y__
+            else:
+                return Z__, Y__, A__, A_, A    
 
 class Transformer(torch.nn.Module):
     def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
@@ -448,7 +453,7 @@ class Transformer(torch.nn.Module):
                 print("%36.36s %8.8s %8.8s %8.8s\x1b[0m" % (parameter_name, suffix, "%f" % parameter.mean(), "%f" % parameter.std()))
 
     # (batches*)context
-    def forward(self, ids, return_A=False, return_emb=False):
+    def forward(self, ids, return_res=False, return_A=False):
         context = ids.shape[-1]
 
         if return_A:
@@ -460,10 +465,11 @@ class Transformer(torch.nn.Module):
         # (batches*)context*d
         X = self.emb(ids)
 
-        if return_emb:
-            # (batches*)(num_blocks+1)*context*d
-            embeddings = torch.empty(*ids.shape[:-1], self.num_blocks+1, context, self.d)
-            embeddings[...,0,:,:] = X
+        if return_res:
+            res_in = X
+            # (batches*)num_blocks*context*d
+            res_att = torch.empty(*ids.shape[:-1], self.num_blocks, context, self.d)
+            res_mlp = torch.empty(*ids.shape[:-1], self.num_blocks, context, self.d)
         
         # Recompute in every batch in case context changes
         if self.is_causal:
@@ -519,13 +525,18 @@ class Transformer(torch.nn.Module):
 
         Y = X_
         for i, block in enumerate(self.blocks):
-            if not return_A:
-                Y = block(Y, causal, rope, alibi, swa, return_A, self.backend)
+            if not return_res:
+                if not return_A:
+                    Y = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                else:
+                    Y, A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
             else:
-                Y, A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_A, self.backend)
-
-            if return_emb:
-                embeddings[...,i+1,:,:] = Y
+                if not return_A:
+                    Y, res_att[...,i,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                    res_mlp[...,i,:,:]= Y
+                else:
+                    Y, res_att[...,i,:,:], A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                    res_mlp[...,i,:,:]= Y
         
         if self.out_norm: Y = self.out_norm(Y)
 
@@ -535,16 +546,16 @@ class Transformer(torch.nn.Module):
         else:
             Z = self.linear(Y)
         
-        if not return_A:
-            if not return_emb:
+        if not return_res:
+            if not return_A:
                 return Z
             else:
-                return Z, embeddings
-        else:
-            if not return_emb:
                 return Z, A__, A_, A
+        else:
+            if not return_A:
+                return Z, res_in, res_att, res_mlp
             else:
-                return Z, A__, A_, A, embeddings
+                return Z, res_in, res_att, res_mlp, A__, A_, A
 
 def get_attention_header(transformer):
     attention_header = ""
