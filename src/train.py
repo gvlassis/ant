@@ -1,4 +1,6 @@
 import torch
+import torch.distributed.checkpoint
+import torch.distributed.checkpoint.state_dict
 import os
 import argparse
 import data.utils_data
@@ -8,10 +10,14 @@ import utils
 import logging
 torch._logging.set_logs(all=logging.ERROR)
 import contextlib
+import warnings
+warnings.filterwarnings("ignore", module="torch.distributed.checkpoint.state_dict_loader")
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("SUBPATH", help="Training log will be saved in SUBPATH.dat", type=os.path.abspath)
 parser.add_argument("--save_model", help="Save the model with the min validation loss in SUBPATH.pt", type=utils.str_to_bool, default=True)
+parser.add_argument("--resume", help="Continue training from checkpoint", type=utils.str_to_bool, default=True)
+parser.add_argument("--checkpoint_freq", help="Every how many batches to save a checkpoint", type=int, default=utils.INF)
 parser.add_argument("--info", help="Print information about the model", type=utils.str_to_bool, default=True)
 parser.add_argument("--graph", help="Draw computational graph in SUBPATH.pdf", type=utils.str_to_bool, default=False)
 parser.add_argument("--test_parametrization", help="Print parametrization information", type=utils.str_to_bool, default=False)
@@ -103,13 +109,23 @@ else:
 
 subpath_dir = os.path.dirname(args.SUBPATH)
 if master: os.makedirs(subpath_dir, exist_ok=True)
-log_path = args.SUBPATH+".dat"
-model_path = args.SUBPATH+".pt"
+checkpoint_path = args.SUBPATH+"_checkpoint"
 graph_path = args.SUBPATH+".pdf"
+log_path = args.SUBPATH+".dat"
 extra_path = args.SUBPATH+"_extra.dat"
+model_path = args.SUBPATH+".pt"
 thresh_path = args.SUBPATH+"_thresh.pt"
 
-extra = False if args.extra_freq==utils.INF else True
+if args.resume:
+    if os.path.exists(checkpoint_path):
+        resume = True
+        if master: print("📌 Resuming training from checkpoint")
+    else:
+        resume = False
+        if master: print("📌 Checkpoint not found. Starting training from scratch.")
+else:
+    resume = False
+checkpoint_dict = {"checkpoint": utils.Checkpoint()}
 
 lm_eval_tasks = []
 if args.lambada:
@@ -120,8 +136,6 @@ if args.hellaswag:
     lm_eval_tasks.append("hellaswag")
 if args.piqa:
     lm_eval_tasks.append("piqa")
-    
-thresh_crossed = False
 
 if args.decoupling:
     c_input = args.c_input
@@ -150,6 +164,8 @@ val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device,
 if master and args.verbose: print("🧠 Initializing model")
 model_or_ddp, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.zeta, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, model_device, args.comp)
 model = model_or_ddp.module if torch.distributed.is_initialized() else model_or_ddp
+checkpoint_dict["checkpoint"].model = model
+checkpoint_dict["checkpoint"].opts = opts
 
 if args.pre_norm: model = models.utils_models.weight_norm(model)
 
@@ -170,10 +186,11 @@ if master and args.graph:
     torchview.draw_graph(model, input_data=input_data, depth=1, expand_nested=True, graph_dir="TB", show_shapes=True).visual_graph.render(cleanup=True, format="pdf", outfile=graph_path)
 
 # Get the parameters' names before compile
-train_stats_header = models.utils_models.get_train_stats_header(model)
+if not resume: train_stats_header = models.utils_models.get_train_stats_header(model)
 
 # float16 (not bfloat16) needs scaling
 scaler = torch.amp.GradScaler("cuda", enabled=(args.dtype==torch.float16))
+checkpoint_dict["checkpoint"].scaler = scaler
 
 # Compile last
 if args.comp:
@@ -188,34 +205,34 @@ for opt in opts:
     scheduler = utils.get_scheduler(args.scheduler, opt, args.train_batches)
     schedulers.append(scheduler)
     if args.print_schedule and master: utils.print_schedule(args.train_batches, scheduler)
+checkpoint_dict["checkpoint"].schedulers = schedulers
 
 if master:
     if args.verbose: print("\x1b[1m%12.12s %12.12s %12.12s %12.12s %18.18s\x1b[0m" % ("train_batch", "lr0", "train_loss", "val_loss", "train_batch_time"))
-    with open(log_path,"w") as file:
-        file.write(f"train_batch lr0 train_loss val_loss train_time {train_stats_header}\n")
-    if extra:
-        with open(extra_path,"w") as file:
-            file.write("train_batch train_time")
+    if not resume:
+        with open(log_path,"w") as file:
+            file.write(f"train_batch lr0 train_loss val_loss train_time {train_stats_header}\n")
+        if args.extra_freq != utils.INF:
+            with open(extra_path,"w") as file:
+                file.write("train_batch train_time")
 
-            if args.rmse: file.write(" train_rmse val_rmse")
-            if args.nrmse: file.write(" train_nrmse val_nrmse")
-            if args.mae: file.write(" train_mae val_mae")
-            if args.nmae: file.write(" train_nmae val_nmae")
-            if args.r2: file.write(" train_r2 val_r2")
-            if args.acc: file.write(" train_acc val_acc")
-            if args.ppl: file.write(" train_ppl val_ppl")
-            if args.lambada: file.write(" lambada")
-            if args.arc: file.write(" arc")
-            if args.hellaswag: file.write(" hellaswag")
-            if args.piqa: file.write(" piqa")
+                if args.rmse: file.write(" train_rmse val_rmse")
+                if args.nrmse: file.write(" train_nrmse val_nrmse")
+                if args.mae: file.write(" train_mae val_mae")
+                if args.nmae: file.write(" train_nmae val_nmae")
+                if args.r2: file.write(" train_r2 val_r2")
+                if args.acc: file.write(" train_acc val_acc")
+                if args.ppl: file.write(" train_ppl val_ppl")
+                if args.lambada: file.write(" lambada")
+                if args.arc: file.write(" arc")
+                if args.hellaswag: file.write(" hellaswag")
+                if args.piqa: file.write(" piqa")
 
-            file.write("\n")
+                file.write("\n")
 
-train_time = 0
-min_train_loss = utils.INF
-min_val_loss = utils.INF
 terminate = torch.tensor(False).to(model_device)
-for train_batch in range(args.train_batches):
+if resume: torch.distributed.checkpoint.load(checkpoint_dict, checkpoint_id=checkpoint_path)
+while checkpoint_dict["checkpoint"].train_batch < args.train_batches:
     if torch.distributed.is_initialized(): torch.distributed.broadcast(terminate, src=0)
     if terminate:
         if torch.distributed.is_initialized(): torch.distributed.destroy_process_group()
@@ -237,25 +254,25 @@ for train_batch in range(args.train_batches):
     
     train_batch_end = utils.get_sync_time(model_device)
     train_batch_time = train_batch_end-train_batch_start
-    train_time += train_batch_time
+    checkpoint_dict["checkpoint"].train_time += train_batch_time
     
     if torch.distributed.is_initialized(): torch.distributed.all_reduce(train_loss, op=torch.distributed.ReduceOp.AVG)
     train_loss = train_loss.item()
 
-    if (train_batch % args.update_freq == 0 or train_batch == args.train_batches-1) and master:
-        train_batch_decorated = "%12.12s" % train_batch
+    if (checkpoint_dict["checkpoint"].train_batch % args.update_freq == 0 or checkpoint_dict["checkpoint"].train_batch == args.train_batches-1) and master:
+        train_batch_decorated = "%12.12s" % checkpoint_dict["checkpoint"].train_batch
 
         lr0_decorated = "%12.12s" % ("%f" % schedulers[0].get_last_lr()[0])
         
-        if train_loss < min_train_loss:
-            min_train_loss = train_loss
+        if train_loss < checkpoint_dict["checkpoint"].min_train_loss:
+            checkpoint_dict["checkpoint"].min_train_loss = train_loss
             train_loss_decorated = "\x1b[35;1m%12.12s\x1b[0m" % ("%f" % train_loss)
         else:
             train_loss_decorated = "%12.12s" % ("%f" % train_loss)
 
         val_loss = data.utils_data.approximate_loss(args.val_batches, val_iterator, args.dataset, model, args.dtype)
-        if val_loss < min_val_loss:
-            min_val_loss = val_loss
+        if val_loss < checkpoint_dict["checkpoint"].min_val_loss:
+            checkpoint_dict["checkpoint"].min_val_loss = val_loss
             if args.save_model: torch.save(model.state_dict(), model_path)
             val_loss_decorated = "\x1b[36;1m%12.12s\x1b[0m" % ("%f" % val_loss)
         else:
@@ -267,17 +284,17 @@ for train_batch in range(args.train_batches):
 
         if args.verbose: print("%s %s %s %s %s" % (train_batch_decorated, lr0_decorated, train_loss_decorated, val_loss_decorated, train_batch_time_decorated))
         with open(log_path,"a") as file:
-            file.write("%d %f %f %f %d %s\n" % (train_batch, schedulers[0].get_last_lr()[0], train_loss, val_loss, train_time, train_stats))
+            file.write("%d %f %f %f %d %s\n" % (checkpoint_dict["checkpoint"].train_batch, schedulers[0].get_last_lr()[0], train_loss, val_loss, checkpoint_dict["checkpoint"].train_time, train_stats))
         
-        if (not thresh_crossed) and (val_loss < args.thresh):
+        if (not checkpoint_dict["checkpoint"].thresh_crossed) and (val_loss < args.thresh):
             torch.save(model.state_dict(), thresh_path)
-            thresh_crossed = True
+            checkpoint_dict["checkpoint"].thresh_crossed = True
     
-    if extra and (train_batch % args.extra_freq == 0 or train_batch == args.train_batches-1) and master:
+    if args.extra_freq != utils.INF and (checkpoint_dict["checkpoint"].train_batch % args.extra_freq == 0 or checkpoint_dict["checkpoint"].train_batch == args.train_batches-1) and master:
         print("━"*70)
 
         with open(extra_path,"a") as file:
-            file.write("%d %d" % (train_batch, train_time))
+            file.write("%d %d" % (checkpoint_dict["checkpoint"].train_batch, checkpoint_dict["checkpoint"].train_time))
         
         if args.rmse:
             train_rmse = data.utils_data.approximate_rmse(args.val_batches, train_iterator,  args.dataset, model, args.dtype)
@@ -409,6 +426,11 @@ for train_batch in range(args.train_batches):
     scaler.update()
     for scheduler in schedulers:
         scheduler.step()
+
+    checkpoint_dict["checkpoint"].train_batch += 1
+    
+    if args.checkpoint_freq != utils.INF and (checkpoint_dict["checkpoint"].train_batch % args.checkpoint_freq == 0):
+        torch.distributed.checkpoint.save(checkpoint_dict, checkpoint_id=checkpoint_path)
 
 if master and (not args.verbose): print("%f" % val_loss, end="")
 

@@ -319,9 +319,9 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
         import pytorch_optimizer
 
         opts = [
-            pytorch_optimizer.Kron(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=8192, min_ndim_triangular=2, memory_save_mode=None),
-            pytorch_optimizer.Kron(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=8192, min_ndim_triangular=2, memory_save_mode=None),
-            # pytorch_optimizer.Kron(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=8192, min_ndim_triangular=2, memory_save_mode=None)
+            pytorch_optimizer.Kron(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None),
+            pytorch_optimizer.Kron(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None),
+            # pytorch_optimizer.Kron(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None)
         ]
     
     # Feb, 2018
@@ -333,9 +333,9 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
         shampoo_pt2_compile_config = distributed_shampoo.ShampooPT2CompileConfig() if comp else None
         
         opts = [
-            distributed_shampoo.DistributedShampoo(input_params+vector_params, lr=k_input, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True),
-            distributed_shampoo.DistributedShampoo(hidden_params, lr=k_hidden, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True),
-            # distributed_shampoo.DistributedShampoo(output_params, lr=k_output, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=8192, start_preconditioning_step=-1, use_bias_correction=True)
+            distributed_shampoo.DistributedShampoo(input_params+vector_params, lr=k_input, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=12288, start_preconditioning_step=-1, use_bias_correction=True),
+            distributed_shampoo.DistributedShampoo(hidden_params, lr=k_hidden, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=12288, start_preconditioning_step=-1, use_bias_correction=True),
+            # distributed_shampoo.DistributedShampoo(output_params, lr=k_output, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=12288, start_preconditioning_step=-1, use_bias_correction=True)
         ]
 
     # Feb, 2020
@@ -373,9 +373,9 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
         import pytorch_optimizer
 
         opts = [
-            pytorch_optimizer.SOAP(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True),
-            pytorch_optimizer.SOAP(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True),
-            # pytorch_optimizer.SOAP(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=8192, precondition_1d=False, correct_bias=True)
+            pytorch_optimizer.SOAP(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=12288, precondition_1d=False, correct_bias=True),
+            pytorch_optimizer.SOAP(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=12288, precondition_1d=False, correct_bias=True),
+            # pytorch_optimizer.SOAP(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=12288, precondition_1d=False, correct_bias=True)
         ]
 
     # Nov, 2024
@@ -410,11 +410,12 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
     
     # Dec, 2024
     elif opt=="muon":
+        # Distributed Muon does NOT work with DCP, is less robust and more complicated 
         import muon
 
         opts = [
             torch.optim.AdamW(input_params+vector_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
-            muon.Muon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay) if torch.distributed.is_initialized() else muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
+            muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
             # torch.optim.AdamW(output_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True)
         ]
     

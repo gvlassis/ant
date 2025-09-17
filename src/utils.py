@@ -11,6 +11,8 @@ import models.utils_models
 import data.utils_data
 import warnings
 warnings.filterwarnings("ignore", module="torch.optim.lr_scheduler")
+import torch.distributed.checkpoint
+import torch.distributed.checkpoint.state_dict
 
 script_path = os.path.abspath(__file__)
 src_path = os.path.dirname(script_path)
@@ -428,3 +430,69 @@ def write_eigsdist(vocab_size, family, parametrization, scale_type, ζ, context,
         with open(eigsdist_path, "a") as file:
             file.write("%f %f\n" % (x, y))
 
+# Our checkpoint does NOT include RNG seeds and dataset state.
+class Checkpoint(torch.distributed.checkpoint.stateful.Stateful):
+
+    # Built gradually
+    def __init__(self):
+        super().__init__()
+        
+        # Do not have state_dict()
+        self.thresh_crossed = False
+        self.train_batch = 0
+        self.train_time = 0
+        self.min_train_loss = INF
+        self.min_val_loss = INF
+        
+        # Have state_dict()
+        self.model = None
+        self.opts = None
+        self.scaler = None
+        self.schedulers = None
+
+    def state_dict(self):
+        model_state_dict = torch.distributed.checkpoint.state_dict.get_model_state_dict(self.model)
+
+        opts_state_dict = []
+        schedulers_state_dict = []
+        for i in range(len(self.opts)):
+            if self.opts[i].__class__.__name__ == "DistributedShampoo":
+                opt_state_dict = self.opts[i].distributed_state_dict(key_to_param=self.model.named_parameters())
+            else:
+                opt_state_dict = torch.distributed.checkpoint.state_dict.get_optimizer_state_dict(self.model, self.opts[i])
+            scheduler_state_dict = self.schedulers[i].state_dict()
+
+            opts_state_dict.append(opt_state_dict)
+            schedulers_state_dict.append(scheduler_state_dict)
+
+        scaler_state_dict = self.scaler.state_dict()
+
+        return {
+            "thresh_crossed": self.thresh_crossed,
+            "train_batch": self.train_batch,
+            "train_time": self.train_time,
+            "min_train_loss": self.min_train_loss,
+            "min_val_loss": self.min_val_loss,
+            "model": model_state_dict,
+            "opts": opts_state_dict,
+            "scaler": scaler_state_dict,
+            "schedulers": schedulers_state_dict
+        }
+    
+    def load_state_dict(self, state_dict):
+        self.thresh_crossed = state_dict["thresh_crossed"]
+        self.train_batch = state_dict["train_batch"]
+        self.train_time = state_dict["train_time"]
+        self.min_train_loss = state_dict["min_train_loss"]
+        self.min_val_loss = state_dict["min_val_loss"]
+        
+        torch.distributed.checkpoint.state_dict.set_model_state_dict(self.model, state_dict["model"])
+
+        for i in range(len(self.opts)):
+            if self.opts[i].__class__.__name__ == "DistributedShampoo":
+                self.opts[i].load_distributed_state_dict(state_dict["opts"][i], key_to_param=self.model.named_parameters())
+            else:
+                torch.distributed.checkpoint.state_dict.set_optimizer_state_dict(self.model, self.opts[i], state_dict["opts"][i])
+            self.schedulers[i].load_state_dict(state_dict["schedulers"][i])
+
+        self.scaler.load_state_dict(state_dict["scaler"])
