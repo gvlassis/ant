@@ -6,6 +6,7 @@ import torchvision.transforms.v2
 import sys
 from math import sqrt
 import collections
+import numpy
 
 script_path = os.path.abspath(__file__)
 data_path = os.path.dirname(script_path)
@@ -14,81 +15,89 @@ root_path = os.path.dirname(src_path)
 
 DATASETS_TABULAR = ["california_housing"]
 DATASETS_IMAGE = ["mnist", "cifar10", "tinyimagenet"]
-DATASETS_TEXT = ["shakespearefirstfolio", "wikitext", "minipile", "openwebtext", "finewebedu", "climbmix10m", "ancient_greek_theatre", "culturay_el"]
+DATASETS_TEXT = ["shakespearefirstfolio", "wikitext", "minipile", "openwebtext", "fineweb", "finewebedu", "climbmix10m", "ancient_greek_theatre", "culturay_el"]
 DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
 TOKENIZER_TYPES = ["tokenizers", "tokenmonster"]
 
-def get_splits(dataset):
+def get_splits(dataset, keep_in_memory=False):
     if dataset=="california_housing":
-        train_dataset = datasets.load_dataset("gvlassis/california_housing", split="train", trust_remote_code=True, keep_in_memory=True)
-        val_dataset = datasets.load_dataset("gvlassis/california_housing", split="validation", trust_remote_code=True, keep_in_memory=True)
-        test_dataset = datasets.load_dataset("gvlassis/california_housing", split="test", trust_remote_code=True, keep_in_memory=True)
+        train_dataset = datasets.load_dataset("gvlassis/california_housing", split="train", keep_in_memory=keep_in_memory)
+        val_dataset = datasets.load_dataset("gvlassis/california_housing", split="validation", keep_in_memory=keep_in_memory)
+        test_dataset = datasets.load_dataset("gvlassis/california_housing", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="mnist":
-        mnist_train_dataset = datasets.load_dataset("ylecun/mnist", split="train", trust_remote_code=True, keep_in_memory=True)
-        mnist_train_dataset = mnist_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_dataset = mnist_train_dataset["train"]
-        val_dataset = mnist_train_dataset["test"]
-        test_dataset = datasets.load_dataset("ylecun/mnist", split="test", trust_remote_code=True, keep_in_memory=True)
+        dataset = datasets.load_dataset("ylecun/mnist", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
+        test_dataset = datasets.load_dataset("ylecun/mnist", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="cifar10":
-        cifar10_train_dataset = datasets.load_dataset("uoft-cs/cifar10", split="train", trust_remote_code=True, keep_in_memory=True)
-        cifar10_train_dataset = cifar10_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_dataset = cifar10_train_dataset["train"]
-        val_dataset = cifar10_train_dataset["test"]
-        test_dataset = datasets.load_dataset("uoft-cs/cifar10", split="test", trust_remote_code=True, keep_in_memory=True)
+        dataset = datasets.load_dataset("uoft-cs/cifar10", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
+        test_dataset = datasets.load_dataset("uoft-cs/cifar10", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="tinyimagenet":
-        tinyimagenet_train_dataset = datasets.load_dataset("zh-plus/tiny-imagenet", split="train", trust_remote_code=True, keep_in_memory=True)
-        tinyimagenet_train_dataset = tinyimagenet_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_dataset = tinyimagenet_train_dataset["train"]
-        test_dataset = tinyimagenet_train_dataset["test"]
-        val_dataset = datasets.load_dataset("zh-plus/tiny-imagenet", split="valid", trust_remote_code=True, keep_in_memory=True)
+        dataset = datasets.load_dataset("zh-plus/tiny-imagenet", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        test_dataset = dataset["test"]
+        val_dataset = datasets.load_dataset("zh-plus/tiny-imagenet", split="valid", keep_in_memory=keep_in_memory)
     elif dataset=="shakespearefirstfolio":
-        train_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="train", trust_remote_code=True, keep_in_memory=True)
-        val_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="validation", trust_remote_code=True, keep_in_memory=True)
-        test_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="test", trust_remote_code=True, keep_in_memory=True)
+        train_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="train", keep_in_memory=keep_in_memory)
+        val_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="validation", keep_in_memory=keep_in_memory)
+        test_dataset = datasets.load_dataset("gvlassis/shakespearefirstfolio", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="wikitext":
-        train_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="train", trust_remote_code=True, keep_in_memory=True)
-        val_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="validation", trust_remote_code=True, keep_in_memory=True)
-        test_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="test", trust_remote_code=True, keep_in_memory=True)
+        train_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="train", keep_in_memory=keep_in_memory)
+        val_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="validation", keep_in_memory=keep_in_memory)
+        test_dataset = datasets.load_dataset("Salesforce/wikitext", name="wikitext-103-v1", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="minipile":
-        train_dataset = datasets.load_dataset("JeanKaddour/minipile", split="train", trust_remote_code=True, keep_in_memory=True)
-        val_dataset = datasets.load_dataset("JeanKaddour/minipile", split="validation", trust_remote_code=True, keep_in_memory=True)
-        test_dataset = datasets.load_dataset("JeanKaddour/minipile", split="test", trust_remote_code=True, keep_in_memory=True)
+        train_dataset = datasets.load_dataset("JeanKaddour/minipile", split="train", keep_in_memory=keep_in_memory)
+        val_dataset = datasets.load_dataset("JeanKaddour/minipile", split="validation", keep_in_memory=keep_in_memory)
+        test_dataset = datasets.load_dataset("JeanKaddour/minipile", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="openwebtext":
-        openwebtext_train_dataset = datasets.load_dataset("Skylion007/openwebtext", split="train", trust_remote_code=True, keep_in_memory=True)
-        openwebtext_train_dataset = openwebtext_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_val_dataset = openwebtext_train_dataset["train"]
-        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=True)
-        train_dataset = train_val_dataset["train"]
-        val_dataset = train_val_dataset["test"]
-        test_dataset = openwebtext_train_dataset["test"]
+        dataset = datasets.load_dataset("Skylion007/openwebtext", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        test_dataset = dataset["test"]
+        dataset = dataset["train"]
+        dataset = dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
+    elif dataset=="fineweb":
+        dataset = datasets.load_dataset("HuggingFaceFW/fineweb", name="sample-10BT", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        test_dataset = dataset["test"]
+        dataset = dataset["train"]
+        dataset = dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
     elif dataset=="finewebedu":
-        finewebedu_train_dataset = datasets.load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", trust_remote_code=True, keep_in_memory=True)
-        finewebedu_train_dataset = finewebedu_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_val_dataset = finewebedu_train_dataset["train"]
-        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=True)
-        train_dataset = train_val_dataset["train"]
-        val_dataset = train_val_dataset["test"]
-        test_dataset = finewebedu_train_dataset["test"]
+        dataset = datasets.load_dataset("HuggingFaceFW/fineweb-edu", name="CC-MAIN-2024-10", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        test_dataset = dataset["test"]
+        dataset = dataset["train"]
+        dataset = dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
     elif dataset=="climbmix10m":
-        climbmix10m_train_dataset = datasets.load_dataset("gvlassis/ClimbMix10m", split="train", trust_remote_code=True, keep_in_memory=True)
-        climbmix10m_train_dataset = climbmix10m_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_val_dataset = climbmix10m_train_dataset["train"]
-        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=True)
-        train_dataset = train_val_dataset["train"]
-        val_dataset = train_val_dataset["test"]
-        test_dataset = climbmix10m_train_dataset["test"]
+        dataset = datasets.load_dataset("gvlassis/ClimbMix10m", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        test_dataset = dataset["test"]
+        dataset = dataset["train"]
+        dataset = dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
     elif dataset=="ancient_greek_theatre":
-        train_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="train", trust_remote_code=True, keep_in_memory=True)
-        val_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="validation", trust_remote_code=True, keep_in_memory=True)
-        test_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="test", trust_remote_code=True, keep_in_memory=True)
+        train_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="train", keep_in_memory=keep_in_memory)
+        val_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="validation", keep_in_memory=keep_in_memory)
+        test_dataset = datasets.load_dataset("gvlassis/ancient_greek_theatre", split="test", keep_in_memory=keep_in_memory)
     elif dataset=="culturay_el":
-        culturay_el_train_dataset = datasets.load_dataset("ontocord/CulturaY", name="el", split="train", trust_remote_code=True, keep_in_memory=True)
-        culturay_el_train_dataset = culturay_el_train_dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=True)
-        train_val_dataset = culturay_el_train_dataset["train"]
-        train_val_dataset = train_val_dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=True)
-        train_dataset = train_val_dataset["train"]
-        val_dataset = train_val_dataset["test"]
-        test_dataset = culturay_el_train_dataset["test"]
+        dataset = datasets.load_dataset("ontocord/CulturaY", name="el", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        test_dataset = dataset["test"]
+        dataset = dataset["train"]
+        dataset = dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
 
     return train_dataset, val_dataset, test_dataset
 
@@ -187,24 +196,32 @@ class TextDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.X.numel()-self.context
 
-def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, cores):
+def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_size=1000, cores=1):
 
     if tokenizer_type=="tokenizers":
-        dataset = dataset.map(lambda sample: {"ids": tokenizer.encode(sample["text"], add_special_tokens=False).ids+[eot_id]}, remove_columns=["text"], num_proc=cores)
+        def tokenize(batch):
+            batch = tokenizer.encode_batch_fast(batch["text"], add_special_tokens=False)
+            batch = [numpy.array(sample.ids, dtype=numpy.uint16) for sample in batch]
+            return {"ids": batch}
     elif tokenizer_type=="tokenmonster":
-        if cores>1: print("\x1b[93;3m[WARNING]: datasets.Dataset.map(num_proc=cores) gets stuck with TokenMonster if num_proc>1. Hence, we force num_proc=1.\x1b[0m")
-        # Does NOT have add_special_tokens=False
-        dataset = dataset.map(lambda sample: {"ids": tokenizer.tokenize(sample["text"]).tolist()+[eot_id]}, remove_columns=["text"], num_proc=1)
+        def tokenize(batch):
+            batch = tokenizer.tokenize(batch["text"]) # Does NOT have add_special_tokens=False
+            return {"ids": batch}
+        cores = 1 # map(num_proc=cores) gets stuck with TokenMonster if num_proc>1
+    
+    dataset = dataset.map(tokenize, remove_columns=["text"], batched=True, batch_size=batch_size, num_proc=cores)
 
-    ids = [element for sublist in dataset["ids"] for element in sublist]
+    dataset.set_format("torch", dtype=torch.uint16)
+    dataset = dataset["ids"]
 
-    X = torch.tensor(ids)
-    X = X + torch.iinfo(torch.int16).min
-    X = X.to(torch.int16)
+    eot = torch.tensor([eot_id], dtype=torch.uint16)
+    dataset = [elem for tensor in dataset for elem in (tensor, eot)]
 
-    print("\x1b[36m%d\x1b[0m tokens" % X.numel())
+    dataset = torch.cat(dataset)
 
-    return X
+    print("\x1b[36m%d\x1b[0m tokens" % dataset.numel())
+
+    return dataset
 
 def dataset_to_tensors(dataset, tokenizer_type, tokenizer, eot_id, cores):
 
@@ -212,7 +229,7 @@ def dataset_to_tensors(dataset, tokenizer_type, tokenizer, eot_id, cores):
     if set(["img", "image"]) & set(dataset.column_names):
         tensors = image_dataset_to_tensors(dataset, cores)
     elif "text" in dataset.column_names:
-        tensors = (text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, cores), None)
+        tensors = (text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, cores=cores), None)
     else:
         tensors = tabular_dataset_to_tensors(dataset)
 
@@ -246,7 +263,7 @@ def transform(dataset, x):
     elif dataset in DATASETS_IMAGE:
         x = x.to(torch.float32)
     elif dataset in DATASETS_TEXT:
-        x = x.to(torch.int32) - torch.iinfo(torch.int16).min
+        x = x.to(torch.int32)
         
     return x
 
@@ -272,7 +289,7 @@ def get_loss(dataset, model, batch_X, batch_Y, label_smoothing=0):
     elif dataset in DATASETS_TEXT:
         loss = torch.nn.functional.cross_entropy(
             torch.reshape(batch_Y_, (-1,batch_Y_.shape[-1])),
-            torch.flatten(batch_Y.to(torch.int64) - torch.iinfo(torch.int16).min),
+            torch.flatten(batch_Y.to(torch.int64)),
             label_smoothing = label_smoothing
         )
         
@@ -445,7 +462,7 @@ def approximate_acc(batches, iterator, dataset, model, dtype):
 #
 #     return ppl
 #
-#     batch_Y.to(torch.int64) - torch.iinfo(torch.int16).min
+#     batch_Y.to(torch.int64)
 
 def lm_eval_wrapper(tokenizer_type, tokenizer, eot_id, model, dtype):
     import lm_eval
