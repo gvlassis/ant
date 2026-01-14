@@ -330,7 +330,7 @@ class MHSA(torch.nn.Module):
             return Y, A__, A_, A
 
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=3, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
         super().__init__()
 
         self.heads = heads
@@ -340,7 +340,7 @@ class Block(torch.nn.Module):
         self.ratio = ratio
         self.groups = heads//ratio
         self.exp_factor = exp_factor
-        self.d_hidden = exp_factor*self.d
+        self.d_hidden = int(exp_factor*self.d)
         self.dropout = dropout
         self.norm_type = norm_type
         self.bias = bias

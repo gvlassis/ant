@@ -13,6 +13,7 @@ shakespearefirstfolio
 wikitext
 ancient_greek_theatre
 culturay_el
+fineweb
 finewebedu
 openwebtext
 minipile
@@ -22,3 +23,4 @@ src/create_study.py
 src/optimization.py
 src/models/ngpt2.py
 src/models/ngpt3.py
+**/huggingface
