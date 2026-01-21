@@ -207,7 +207,7 @@ def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_siz
         def tokenize(batch):
             batch = tokenizer.tokenize(batch["text"]) # Does NOT have add_special_tokens=False
             return {"ids": batch}
-        cores = 1 # map(num_proc=cores) gets stuck with TokenMonster if num_proc>1
+        cores = 1 # map(num_proc=cores) crushes with TokenMonster if num_proc>1
     
     dataset = dataset.map(tokenize, remove_columns=["text"], batched=True, batch_size=batch_size, num_proc=cores)
 

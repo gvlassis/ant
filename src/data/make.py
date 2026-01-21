@@ -9,6 +9,7 @@ parser.add_argument("--tokenizer_type", choices=utils_data.TOKENIZER_TYPES, help
 parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
 parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
 parser.add_argument("--cores", help="CPU cores used by datasets.Dataset.map(num_proc=).", type=int, default=os.cpu_count()//2)
+parser.add_argument("--keep_in_memory", help="", type=int, default=False)
 args=parser.parse_args()
 
 script_path = os.path.abspath(__file__)
@@ -23,10 +24,10 @@ if args.tokenizer_type=="tokenizers":
     tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
 elif args.tokenizer_type=="tokenmonster":
     import tokenmonster
-    tokenizer = tokenmonster.load_multiprocess_safe(args.tokenizer)
+    tokenizer = tokenmonster.load(args.tokenizer) # load_multiprocess_safe() hangs
 
 print("💾 Loading splits")
-train_dataset, val_dataset, test_dataset = utils_data.get_splits(args.dataset)
+train_dataset, val_dataset, test_dataset = utils_data.get_splits(args.dataset, args.keep_in_memory)
 
 print("✏️ Preprocessing")
 train_X, train_Y = utils_data.dataset_to_tensors(train_dataset, args.tokenizer_type, tokenizer, args.eot_id, args.cores)
