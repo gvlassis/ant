@@ -9,7 +9,7 @@ parser.add_argument("--tokenizer_type", choices=utils_data.TOKENIZER_TYPES, help
 parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
 parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
 parser.add_argument("--cores", help="CPU cores used by datasets.Dataset.map(num_proc=).", type=int, default=os.cpu_count()//2)
-parser.add_argument("--keep_in_memory", help="", type=int, default=False)
+parser.add_argument("--keep_in_memory", help="Keep datasets in RAM", type=bool, default=False)
 args=parser.parse_args()
 
 script_path = os.path.abspath(__file__)
