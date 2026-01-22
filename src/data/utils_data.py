@@ -201,7 +201,7 @@ def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_siz
     if tokenizer_type=="tokenizers":
         import tokenizers
 
-        tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
+        tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(tokenizer).backend_tokenizer
 
         def tokenize(batch):
             batch = tokenizer.encode_batch_fast(batch["text"], add_special_tokens=False)
@@ -211,7 +211,7 @@ def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_siz
     elif tokenizer_type=="tokenmonster":
         import tokenmonster
         
-        tokenizer = tokenmonster.load(args.tokenizer) # i) load_multiprocess_safe() hangs, ii) https://github.com/alasdairforsythe/tokenmonster/issues/33
+        tokenizer = tokenmonster.load(tokenizer) # i) load_multiprocess_safe() hangs, ii) https://github.com/alasdairforsythe/tokenmonster/issues/33
 
         def tokenize(batch):
             batch = tokenizer.tokenize(batch["text"]) # Does NOT have add_special_tokens=False
