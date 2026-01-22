@@ -199,14 +199,24 @@ class TextDataset(torch.utils.data.Dataset):
 def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_size=1000, cores=1):
 
     if tokenizer_type=="tokenizers":
+        import tokenizers
+
+        tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
+
         def tokenize(batch):
             batch = tokenizer.encode_batch_fast(batch["text"], add_special_tokens=False)
             batch = [numpy.array(sample.ids, dtype=numpy.uint16) for sample in batch]
             return {"ids": batch}
+
     elif tokenizer_type=="tokenmonster":
+        import tokenmonster
+        
+        tokenizer = tokenmonster.load(args.tokenizer) # i) load_multiprocess_safe() hangs, ii) https://github.com/alasdairforsythe/tokenmonster/issues/33
+
         def tokenize(batch):
             batch = tokenizer.tokenize(batch["text"]) # Does NOT have add_special_tokens=False
             return {"ids": batch}
+
         cores = 1 # map(num_proc=cores) crushes with TokenMonster if num_proc>1
     
     dataset = dataset.map(tokenize, remove_columns=["text"], batched=True, batch_size=batch_size, num_proc=cores)
@@ -223,13 +233,13 @@ def text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_siz
 
     return dataset
 
-def dataset_to_tensors(dataset, tokenizer_type, tokenizer, eot_id, cores):
+def dataset_to_tensors(dataset, tokenizer_type, tokenizer, eot_id, batch_size, cores):
 
     # Auto-detection
     if set(["img", "image"]) & set(dataset.column_names):
         tensors = image_dataset_to_tensors(dataset, cores)
     elif "text" in dataset.column_names:
-        tensors = (text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, cores=cores), None)
+        tensors = (text_dataset_to_tensor(dataset, tokenizer_type, tokenizer, eot_id, batch_size, cores), None)
     else:
         tensors = tabular_dataset_to_tensors(dataset)
 

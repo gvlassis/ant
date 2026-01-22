@@ -367,7 +367,7 @@ while checkpoint_dict["checkpoint"].train_batch < args.train_batches:
                 tokenizer = transformers.PreTrainedTokenizerFast.from_pretrained(args.tokenizer).backend_tokenizer
             elif args.tokenizer_type=="tokenmonster":
                 import tokenmonster
-                tokenizer = tokenmonster.load_multiprocess_safe(args.tokenizer)
+                tokenizer = tokenmonster.load(args.tokenizer)
 
             lm_eval_results = lm_eval.simple_evaluate(model = data.utils_data.lm_eval_wrapper(args.tokenizer_type, tokenizer, args.eot_id, model, args.dtype),
                                                       tasks = lm_eval_tasks,
