@@ -9,7 +9,7 @@ warnings.formatwarning = get_formatwarning
 from . import optimizers
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "psgd", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion"]
+OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -315,13 +315,23 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
         ]
     
     # Dec, 2015
-    elif opt=="psgd":
+    elif opt=="kron":
         import pytorch_optimizer
 
         opts = [
             pytorch_optimizer.Kron(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None),
             pytorch_optimizer.Kron(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None),
             # pytorch_optimizer.Kron(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None)
+        ]
+    
+    # FIND OUT
+    elif opt=="pro":
+        import quad_torch
+
+        opts = [
+            quad_torch.Procrustes(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, lr_style="adam", max_size_dense=12288, max_skew_dense=1.0),
+            quad_torch.Procrustes(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, lr_style="adam", max_size_dense=12288, max_skew_dense=1.0),
+            # quad_torch.Procrustes(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, lr_style="adam", max_size_dense=12288, max_skew_dense=1.0)
         ]
     
     # Feb, 2018
@@ -403,9 +413,9 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
         import heavyball
 
         opts = [
-            heavyball.ForeachAdamW(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True, storage_dtype="float32"),
-            heavyball.ForeachAdamW(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True, storage_dtype="float32"),
-            # heavyball.ForeachAdamW(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True, storage_dtype="float32")
+            heavyball.ForeachAdamW(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True),
+            heavyball.ForeachAdamW(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True),
+            # heavyball.ForeachAdamW(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True)
         ]
     
     # Dec, 2024
