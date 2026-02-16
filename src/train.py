@@ -77,7 +77,7 @@ parser.add_argument("--model_device_index", help="CUDA device that stores the mo
 parser.add_argument("--dataset_device_type", choices=["cpu", "cuda"], help="Device type that preloads the dataset", default="cpu")
 parser.add_argument("--dtype", help="torch.dtype for Automatic Mixed Precision (AMP)", type=lambda x: getattr(torch, x), default="bfloat16")
 parser.add_argument("--comp", help="Use torch.compile()", type=utils.str_to_bool, default=True)
-parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backend", choices=models.transformer.BACKENDS, default="flash")
+parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backend", choices=models.transformer.BACKENDS, default="flash2")
 parser.add_argument("--tokenizer_type", choices=data.utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenmonster")
 parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
 parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)

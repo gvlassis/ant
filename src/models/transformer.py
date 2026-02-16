@@ -5,7 +5,7 @@ import math
 
 SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 POS_TYPES = ["learned", "sinusoidal", "rope", "alibi"]
-BACKENDS = ["pytorch", "flash", "flex", "cudnn"]
+BACKENDS = ["pytorch", "flash2", "flash3", "flash4", "flex", "cudnn"]
 NORM_TYPES = ["layer", "rms_learned", "rms_const", "sphere"]
 
 def get_causal(context):
@@ -139,10 +139,12 @@ def sdpa_pytorch(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_
         return Y, A__, A_, A
 
 # (batches*)heads/groups*context*d_head
-def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
-    import flash_attn
-    
-    # FlashAttention2 only supports float scale
+def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None, backend="flash2"):
+    if (alibi is not None) and backend != "flash2":
+        print("\x1b[93;3m[WARNING]: backend={backend} does not support ALiBi. Hence, we force backend=flash2.\x1b[0m")
+        backend = "flash2"
+
+    # FlashAttention only supports float scale
     if isinstance(scale, torch.Tensor):
         Q_shape = Q.shape
         # batches*heads*context*d_head
@@ -163,7 +165,7 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
     context = Q.shape[-2]
     d_head = Q.shape[-1]
 
-    # CAUTION: FlashAttention2 expects batches*context*heads/groups*d_head
+    # CAUTION: FlashAttention expects batches*context*heads/groups*d_head
     Q = Q.movedim(-3,-2).reshape(-1,context,heads,d_head)
     K = K.movedim(-3,-2).reshape(-1,context,groups,d_head)
     V = V.movedim(-3,-2).reshape(-1,context,groups,d_head)
@@ -171,7 +173,16 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None):
     if swa is None:
         swa = (-1,-1)
     
-    Y = flash_attn.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
+    if backend=="flash2":
+        import flash_attn
+        Y = flash_attn.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, alibi_slopes=alibi,  window_size=swa, softmax_scale=scale)
+    elif backend=="flash3":
+        import flash_attn_interface
+        Y = flash_attn_interface.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, window_size=swa, softmax_scale=scale)
+    elif backend=="flash4":
+        import flash_attn.cute
+        Y = flash_attn.cute.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, window_size=swa, softmax_scale=scale)
+    
     Y = Y.to(Q.dtype)
     
     # Restore the shape to: (batches*)heads*context*d_head
@@ -187,11 +198,11 @@ def sdpa_flex():
 def sdpa_cudnn():
     return None
 
-def sdpa_wrapper(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_A=False, backend="flash"):
+def sdpa_wrapper(Q, K, V, causal=None, alibi=None, swa=None, scale=None, return_A=False, backend="flash2"):
     if backend=="pytorch":
         return sdpa_pytorch(Q, K, V, causal, alibi, swa, scale, return_A)
-    elif backend=="flash":
-        return sdpa_flash(Q, K, V, causal, alibi, swa, scale)
+    elif backend in {"flash2", "flash3", "flash4"}:
+        return sdpa_flash(Q, K, V, causal, alibi, swa, scale, backend)
     elif backend=="flex":
         return sdpa_flex()
     elif backend=="cudnn":
@@ -211,38 +222,56 @@ def test_sdpa():
     K = torch.rand((batches, heads, context, d_head)).to("cuda:0", dtype)
     V = torch.rand((batches, heads, context, d_head)).to("cuda:0", dtype)
     pytorch = sdpa_wrapper(Q, K, V, backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    flash3 = sdpa_wrapper(Q, K, V, backend="flash3")
+    torch.testing.assert_close(flash3, pytorch, check_dtype=False)
+    flash4 = sdpa_wrapper(Q, K, V, backend="flash4")
+    torch.testing.assert_close(flash4, pytorch, check_dtype=False)
     print("\x1b[32m ✔\x1b[0m")
 
     print("\x1b[1mcausal\x1b[0m",end="")
     pytorch = sdpa_wrapper(Q, K, V, causal=get_causal(context).to("cuda:0"), backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, causal=True, backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, causal=True, backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    flash3 = sdpa_wrapper(Q, K, V, causal=True, backend="flash3")
+    torch.testing.assert_close(flash3, pytorch, check_dtype=False)
+    flash4 = sdpa_wrapper(Q, K, V, causal=True, backend="flash4")
+    torch.testing.assert_close(flash4, pytorch, check_dtype=False)
     print("\x1b[32m ✔\x1b[0m")
 
     print("\x1b[1malibi\x1b[0m",end="")
     pytorch = sdpa_wrapper(Q, K, V, alibi=get_alibi(heads,context).to("cuda:0",dtype), backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, alibi=get_m(heads).to("cuda:0"), backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, alibi=get_m(heads).to("cuda:0"), backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    # ALiBi not supported on FlashAttention3/4
     print("\x1b[32m ✔\x1b[0m")
 
     print("\x1b[1mswa\x1b[0m",end="")
     pytorch = sdpa_wrapper(Q, K, V, swa=get_swa(context,window).to("cuda:0"), backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, swa=(window,window), backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, swa=(window,window), backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    flash3 = sdpa_wrapper(Q, K, V, swa=(window,window), backend="flash3")
+    torch.testing.assert_close(flash3, pytorch, check_dtype=False)
+    flash4 = sdpa_wrapper(Q, K, V, swa=(window,window), backend="flash4")
+    torch.testing.assert_close(flash4, pytorch, check_dtype=False)
     print("\x1b[32m ✔\x1b[0m")
     
     print("\x1b[1mcausal+alibi\x1b[0m",end="")
     pytorch = sdpa_wrapper(Q, K, V, causal=get_causal(context).to("cuda:0"), alibi=get_alibi(heads,context).to("cuda:0",dtype), backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, causal=True, alibi=get_m(heads).to("cuda:0"), backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, causal=True, alibi=get_m(heads).to("cuda:0"), backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    # ALiBi not supported on FlashAttention3/4
     print("\x1b[32m ✔\x1b[0m")
 
     print("\x1b[1mcausal+swa\x1b[0m",end="")
     pytorch = sdpa_wrapper(Q, K, V, causal=get_causal(context).to("cuda:0"), swa=get_swa(context,window).to("cuda:0"), backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, causal=True, swa=(window,window), backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, causal=True, swa=(window,window), backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    flash3 = sdpa_wrapper(Q, K, V, causal=True, swa=(window,window), backend="flash3")
+    torch.testing.assert_close(flash3, pytorch, check_dtype=False)
+    flash4 = sdpa_wrapper(Q, K, V, causal=True, swa=(window,window), backend="flash4")
+    torch.testing.assert_close(flash4, pytorch, check_dtype=False)
     print("\x1b[32m ✔\x1b[0m")
 
     print("\x1b[1mGQA\x1b[0m",end="")
@@ -250,8 +279,12 @@ def test_sdpa():
     K = torch.rand((batches, groups, context, d_head)).to("cuda:0", dtype)
     V = torch.rand((batches, groups, context, d_head)).to("cuda:0", dtype)
     pytorch = sdpa_wrapper(Q, K, V, backend="pytorch")
-    flash = sdpa_wrapper(Q, K, V, backend="flash")
-    torch.testing.assert_close(flash, pytorch, check_dtype=False)
+    flash2 = sdpa_wrapper(Q, K, V, backend="flash2")
+    torch.testing.assert_close(flash2, pytorch, check_dtype=False)
+    flash3 = sdpa_wrapper(Q, K, V, backend="flash3")
+    torch.testing.assert_close(flash3, pytorch, check_dtype=False)
+    flash4 = sdpa_wrapper(Q, K, V, backend="flash4")
+    torch.testing.assert_close(flash4, pytorch, check_dtype=False)
     print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
@@ -284,7 +317,7 @@ class MHSA(torch.nn.Module):
         self.lo = torch.nn.Linear(self.d, self.d, bias=False)
 
     # (batches*)context*d
-    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash"):
+    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash2"):
         # (batches*)context*d
         Q = self.lq(X)
         # (batches*)context*d_KV
@@ -355,7 +388,7 @@ class Block(torch.nn.Module):
         self.pre_mlp_norm = mlp.get_norm(pre_mlp_norm, norm_type, self.d, bias)
         self.out_mlp_norm = mlp.get_norm(out_mlp_norm, norm_type, self.d, bias)
         
-    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash"):
+    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash2"):
         mhsa = self.mhsa(self.pre_att_norm(X) if self.pre_att_norm else X, causal, rope, alibi, swa, return_A, backend)
         if not return_A:
             Y = mhsa
@@ -386,7 +419,7 @@ class Block(torch.nn.Module):
                 return Z__, Y__, A__, A_, A    
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash2", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -475,7 +508,7 @@ class Transformer(torch.nn.Module):
         if self.is_causal:
             if self.backend=="pytorch":
                 causal = get_causal(context).to(ids.device)
-            elif self.backend=="flash":
+            elif self.backend=="flash2":
                 causal = True
             elif self.backend=="flex":
                 causal = causal_mod
@@ -498,7 +531,7 @@ class Transformer(torch.nn.Module):
         if self.pos_type == "alibi":
             if self.backend=="pytorch":
                 alibi = get_alibi(self.heads, context).to(ids.device)
-            elif self.backend=="flash":
+            elif self.backend=="flash2":
                 alibi = get_m(self.heads).to(ids.device)
             elif self.backend=="flex":
                 alibi = alibi_mod
@@ -509,7 +542,7 @@ class Transformer(torch.nn.Module):
         if self.window is not None:
             if self.backend=="pytorch":
                 swa = get_swa(context, self.window).to(ids.device)
-            elif self.backend=="flash":
+            elif self.backend=="flash2":
                 swa = (self.window, self.window)
             elif self.backend=="flex":
                 swa = swa_mod
