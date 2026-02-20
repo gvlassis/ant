@@ -288,7 +288,7 @@ def test_sdpa():
     print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True, quartet=True):
         super().__init__()
 
         self.heads = heads
@@ -308,13 +308,22 @@ class MHSA(torch.nn.Module):
                 self.scale = 1/sqrt(d_head)
             elif scale_type=="1/d":
                 self.scale = 1/d_head
+        self.quartet = quartet
         
         # Packing QKV gives negligible speed gains, while not allowing GQA, hurting code clarity and having side effects with μP
-        self.lq = torch.nn.Linear(self.d, self.d, bias=False)
-        self.lk = torch.nn.Linear(self.d, self.d_KV, bias=False)
-        self.lv = torch.nn.Linear(self.d, self.d_KV, bias=False)
+        if quartet:
+            import quartet2.linear
+            self.lq = quartet2.linear.Quartet_II_linear(self.d, self.d, bias=False)
+            self.lk = quartet2.linear.Quartet_II_linear(self.d, self.d_KV, bias=False)
+            self.lv = quartet2.linear.Quartet_II_linear(self.d, self.d_KV, bias=False)
+
+            self.lo = quartet2.linear.Quartet_II_linear(self.d, self.d, bias=False)
+        else:
+            self.lq = torch.nn.Linear(self.d, self.d, bias=False)
+            self.lk = torch.nn.Linear(self.d, self.d_KV, bias=False)
+            self.lv = torch.nn.Linear(self.d, self.d_KV, bias=False)
         
-        self.lo = torch.nn.Linear(self.d, self.d, bias=False)
+            self.lo = torch.nn.Linear(self.d, self.d, bias=False)
 
     # (batches*)context*d
     def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash2"):
@@ -363,7 +372,7 @@ class MHSA(torch.nn.Module):
             return Y, A__, A_, A
 
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, quartet=True):
         super().__init__()
 
         self.heads = heads
@@ -380,13 +389,15 @@ class Block(torch.nn.Module):
         self.act = act
         self.l1_type = l1_type
         
-        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm)
+        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm, quartet)
         self.pre_att_norm = mlp.get_norm(pre_att_norm, norm_type, self.d, bias)
         self.out_att_norm = mlp.get_norm(out_att_norm, norm_type, self.d, bias)
 
-        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm)
+        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm, quartet)
         self.pre_mlp_norm = mlp.get_norm(pre_mlp_norm, norm_type, self.d, bias)
         self.out_mlp_norm = mlp.get_norm(out_mlp_norm, norm_type, self.d, bias)
+
+        self.quartet = quartet
         
     def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash2"):
         mhsa = self.mhsa(self.pre_att_norm(X) if self.pre_att_norm else X, causal, rope, alibi, swa, return_A, backend)
@@ -419,7 +430,7 @@ class Block(torch.nn.Module):
                 return Z__, Y__, A__, A_, A    
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash2", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash2", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False, quartet=True):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -443,6 +454,7 @@ class Transformer(torch.nn.Module):
         self.l1_type = l1_type
         self.weight_tying = weight_tying
         self.fix_norm = fix_norm
+        self.quartet = quartet
 
         self.emb = torch.nn.Embedding(vocab_size, self.d)
 
@@ -452,7 +464,7 @@ class Transformer(torch.nn.Module):
             pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
-        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm) for _ in range(num_blocks)])
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm, quartet) for _ in range(num_blocks)])
         
         self.out_norm = mlp.get_norm(out_norm, norm_type, self.d, bias)
         

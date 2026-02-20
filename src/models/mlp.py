@@ -44,17 +44,23 @@ class Abs(torch.nn.Module):
         return y
 
 class GLU(torch.nn.Module):
-    def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU()):
+    def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU(), quartet=True):
         super().__init__()
 
         self.d0 = d0
         self.d1 = d1
         self.bias = bias
         self.act = act
+        self.quartet = quartet
         
-        self.gate = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+        if quartet2:
+            self.gate = torch.nn.Sequential(quartet2.linear.Quartet_II_linear(d0, d1, bias), act)
 
-        self.proj = torch.nn.Linear(d0, d1, bias)
+            self.proj = quartet2.linear.Quartet_II_linear(d0, d1, bias)
+        else:
+            self.gate = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+
+            self.proj = torch.nn.Linear(d0, d1, bias)
 
     def forward(self, x):
         y = self.gate(x) * self.proj(x)
@@ -62,7 +68,7 @@ class GLU(torch.nn.Module):
         return y
 
 class MLP2L(torch.nn.Module):
-    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False):
+    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False, quartet=True):
         super().__init__()
 
         self.d0 = d0
@@ -75,13 +81,21 @@ class MLP2L(torch.nn.Module):
         self.norm_type = norm_type
 
         if l1_type=="linear":
-            self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+            if quartet:
+                import quartet2.linear
+                self.l1 = torch.nn.Sequential(quartet2.linear.Quartet_II_linear(d0, d1, bias), act)
+            else:
+                self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
         elif l1_type=="glu":
-            self.l1 = GLU(d0, d1, bias, act)
+            self.l1 = GLU(d0, d1, bias, act, quartet)
 
         self.norm = get_norm(norm, norm_type, d1, bias)
-
-        self.l2 = torch.nn.Linear(d1, d2, bias)
+        
+        if quartet:
+            import quartet2.linear
+            self.l2 = quartet2.linear.Quartet_II_linear(d1, d2, bias)
+        else:
+            self.l2 = torch.nn.Linear(d1, d2, bias)
 
     def forward(self, x):
         a1 = self.l1(x)

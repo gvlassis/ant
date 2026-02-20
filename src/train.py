@@ -81,6 +81,8 @@ parser.add_argument("--backend", help="Scaled Dot Product Attention (SDPA) backe
 parser.add_argument("--tokenizer_type", choices=data.utils_data.TOKENIZER_TYPES, help="Tokenizer library to use", default="tokenmonster")
 parser.add_argument("--tokenizer", help="Name/URL/File of the tokenizer", default="https://huggingface.co/gvlassis/tokenmonster/resolve/main/englishcode-32000-strict-nocapcode-v1-eot%3D14199.vocab?download=true")
 parser.add_argument("--eot_id", help="End-Of-Text token id", type=int, default=14199)
+
+parser.add_argument("--quartet", help="quartet2.linear.Quartet_II_linear instead of torch.nn.Linear", type=utils.str_to_bool, default=True)
 args=parser.parse_args()
 
 if torch.distributed.is_torchelastic_launched():
@@ -162,7 +164,7 @@ train_iterator = data.utils_data.get_iterator(args.dataset, "train", dataset_dev
 val_iterator = data.utils_data.get_iterator(args.dataset, "val", dataset_device, args.micro_batch_size, args.context)
 
 if master and args.verbose: print("🧠 Initializing model")
-model_or_ddp, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.zeta, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, model_device, args.comp)
+model_or_ddp, opts = models.utils_models.get_model_opts(args.vocab_size, args.family, args.parametrization, args.zeta, args.scale_type, c_input, c_hidden, c_output, k_input, k_hidden, k_output, args.opt, args.momentum, args.beta2, args.beta3, args.alpha, args.gamma, args.eps, args.weight_decay, args.context, args.test_parametrization and master, args.warning and master, args.backend, model_device, args.comp, args.quartet)
 model = model_or_ddp.module if torch.distributed.is_initialized() else model_or_ddp
 checkpoint_dict["checkpoint"].model = model
 checkpoint_dict["checkpoint"].opts = opts

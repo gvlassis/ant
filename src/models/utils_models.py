@@ -10,7 +10,7 @@ from . import parametrizations
 
 FAMILIES=["mlp", "mlp_image", "vgg", "resnet", "vit", "transformer", "ngpt"]
 
-def get_model_opts(vocab_size=32000, family="transformer", parametrization="np", zeta=16, scale_type="1/sqrt(d)", c_input=0.02, c_hidden=0.02, c_output=0.02, k_input=1e-3, k_hidden=1e-3, k_output=1e-3, opt="adam", momentum=0.9, beta2=0.95, beta3=0.98, alpha=5, gamma=0.025, eps=1e-8, weight_decay=0, max_context=1024, test_parametrization=False, warning=True, backend="pytorch", device="cuda:0", comp=False):
+def get_model_opts(vocab_size=32000, family="transformer", parametrization="np", zeta=16, scale_type="1/sqrt(d)", c_input=0.02, c_hidden=0.02, c_output=0.02, k_input=1e-3, k_hidden=1e-3, k_output=1e-3, opt="adam", momentum=0.9, beta2=0.95, beta3=0.98, alpha=5, gamma=0.025, eps=1e-8, weight_decay=0, max_context=1024, test_parametrization=False, warning=True, backend="pytorch", device="cuda:0", comp=False, quartet=True):
     if warning and ((parametrization != "mup" and scale_type == "1/d") or (parametrization == "mup" and scale_type == "1/sqrt(d)")): warnings.warn(f"You use {scale_type} attention scaling even though the parametrization is {parametrization}", UserWarning)
     
     if family=="mlp":
@@ -57,10 +57,10 @@ def get_model_opts(vocab_size=32000, family="transformer", parametrization="np",
         heads = 6
         d_head0 = 8
         ratio = 3
-        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False)
-        model = transformer.Transformer(vocab_size, num_blocks, heads, zeta*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=test_parametrization)
-        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False)
-
+        model0 = transformer.Transformer(vocab_size, num_blocks, heads, d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False, quartet=quartet)
+        model = transformer.Transformer(vocab_size, num_blocks, heads, zeta*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=test_parametrization, quartet=quartet)
+        model_ = transformer.Transformer(vocab_size, num_blocks, heads, 2*d_head0, scale_type, ratio, backend=backend, max_context=max_context, std=c_input, test=False, quartet=quartet)
+    
     elif family=="ngpt":
         num_blocks = 12
         heads = 12
