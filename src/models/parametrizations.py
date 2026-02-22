@@ -9,7 +9,7 @@ warnings.formatwarning = get_formatwarning
 from . import optimizers
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion"]
+OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion", "dash"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -300,144 +300,315 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
     
     # Sep, 1951
     if opt=="sgd":
+
+        shared_kwargs = {
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "nesterov": True,
+            "fused": True,
+        }
+
         opts = [
-            torch.optim.SGD(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, nesterov=True, fused=True),
-            torch.optim.SGD(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, nesterov=True, fused=True),
-            # torch.optim.SGD(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, nesterov=True, fused=True)
+            torch.optim.SGD(input_params+vector_params, lr=k_input, **shared_kwargs),
+            torch.optim.SGD(hidden_params, lr=k_hidden, **shared_kwargs),
+            # torch.optim.SGD(output_params, lr=k_output, **shared_kwargs)
         ]
     
     # Dec, 2014
     elif opt=="adam":
+
+        shared_kwargs = {
+            "betas": (momentum, beta2),
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "fused": True,
+        }
+
         opts = [
-            torch.optim.AdamW(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True),
-            torch.optim.AdamW(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True),
-            # torch.optim.AdamW(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True)
+            torch.optim.AdamW(input_params+vector_params, lr=k_input, **shared_kwargs),
+            torch.optim.AdamW(hidden_params, lr=k_hidden, **shared_kwargs),
+            # torch.optim.AdamW(output_params, lr=k_output, **shared_kwargs)
         ]
     
     # Dec, 2015
     elif opt=="kron":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+            "max_size_triangular": 12288,
+            "min_ndim_triangular": 2,
+            "memory_save_mode": None,
+        }
+
         opts = [
-            pytorch_optimizer.Kron(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None),
-            pytorch_optimizer.Kron(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None),
-            # pytorch_optimizer.Kron(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, weight_decouple=True, max_size_triangular=12288, min_ndim_triangular=2, memory_save_mode=None)
+            pytorch_optimizer.Kron(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.Kron(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.Kron(output_params, lr=k_output, **shared_kwargs)
         ]
     
     # FIND OUT
     elif opt=="pro":
         import quad_torch
+        
+        shared_kwargs = {
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+            "lr_style": "adam",
+            "max_size_dense": 12288,
+            "max_skew_dense": 1.0,
+        }
 
         opts = [
-            quad_torch.Procrustes(input_params+vector_params, lr=k_input, momentum=momentum, weight_decay=weight_decay, lr_style="adam", max_size_dense=12288, max_skew_dense=1.0),
-            quad_torch.Procrustes(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay, lr_style="adam", max_size_dense=12288, max_skew_dense=1.0),
-            # quad_torch.Procrustes(output_params, lr=k_output, momentum=momentum, weight_decay=weight_decay, lr_style="adam", max_size_dense=12288, max_skew_dense=1.0)
+            quad_torch.Procrustes(input_params+vector_params, lr=k_input, **shared_kwargs),
+            quad_torch.Procrustes(hidden_params, lr=k_hidden, **shared_kwargs),
+            # quad_torch.Procrustes(output_params, lr=k_output, **shared_kwargs)
         ]
     
     # Feb, 2018
     elif opt=="shampoo":
         import distributed_shampoo
         
-        distributed_config = distributed_shampoo.DDPShampooConfig() if torch.distributed.is_initialized() else None
-
-        shampoo_pt2_compile_config = distributed_shampoo.ShampooPT2CompileConfig() if comp else None
+        shared_kwargs = {
+            "betas": (momentum, beta2),
+            "epsilon": eps,
+            "weight_decay": weight_decay,
+            "use_decoupled_weight_decay": True,
+            "grafting_config": distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps),
+            "distributed_config": distributed_shampoo.DDPShampooConfig() if torch.distributed.is_initialized() else None,
+            "shampoo_pt2_compile_config": distributed_shampoo.ShampooPT2CompileConfig() if comp else None,
+            "precondition_frequency": 20,
+            "max_preconditioner_dim": 12288,
+            "start_preconditioning_step": -1,
+            "use_bias_correction": True,
+        }
         
         opts = [
-            distributed_shampoo.DistributedShampoo(input_params+vector_params, lr=k_input, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=12288, start_preconditioning_step=-1, use_bias_correction=True),
-            distributed_shampoo.DistributedShampoo(hidden_params, lr=k_hidden, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=12288, start_preconditioning_step=-1, use_bias_correction=True),
-            # distributed_shampoo.DistributedShampoo(output_params, lr=k_output, betas=(momentum, beta2), epsilon=eps, weight_decay=weight_decay, use_decoupled_weight_decay=True, grafting_config=distributed_shampoo.AdamGraftingConfig(beta2=beta2, epsilon=eps), distributed_config=distributed_config, shampoo_pt2_compile_config=shampoo_pt2_compile_config, precondition_frequency=20, max_preconditioner_dim=12288, start_preconditioning_step=-1, use_bias_correction=True)
+            distributed_shampoo.DistributedShampoo(input_params+vector_params, lr=k_input, **shared_kwargs),
+            distributed_shampoo.DistributedShampoo(hidden_params, lr=k_hidden, **shared_kwargs),
+            # distributed_shampoo.DistributedShampoo(output_params, lr=k_output, **shared_kwargs)
         ]
 
     # Feb, 2020
     elif opt=="laprop":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "betas": (momentum, beta2),
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+        }
+
         opts = [
-            pytorch_optimizer.LaProp(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True),
-            pytorch_optimizer.LaProp(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True),
-            # pytorch_optimizer.LaProp(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True)
+            pytorch_optimizer.LaProp(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.LaProp(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.LaProp(output_params, lr=k_output, **shared_kwargs)
         ]
 
     # Feb, 2023
     elif opt=="lion":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "betas": (momentum, beta2),
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+        }
+
         opts = [
-            pytorch_optimizer.Lion(input_params+vector_params, lr=k_input, betas=(momentum, beta2), weight_decay=weight_decay, weight_decouple=True),
-            pytorch_optimizer.Lion(hidden_params, lr=k_hidden, betas=(momentum, beta2), weight_decay=weight_decay, weight_decouple=True),
-            # pytorch_optimizer.Lion(output_params, lr=k_output, betas=(momentum, beta2), weight_decay=weight_decay, weight_decouple=True)
+            pytorch_optimizer.Lion(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.Lion(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.Lion(output_params, lr=k_output, **shared_kwargs)
         ]
     
     # Sep, 2024
     elif opt=="ademamix":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "betas": (momentum, beta2, beta3),
+            "alpha": alpha,
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+        }
+
         opts = [
-            pytorch_optimizer.AdEMAMix(input_params+vector_params, lr=k_input, betas=(momentum, beta2, beta3), alpha=alpha, eps=eps, weight_decay=weight_decay, weight_decouple=True),
-            pytorch_optimizer.AdEMAMix(hidden_params, lr=k_hidden, betas=(momentum, beta2, beta3), alpha=alpha, eps=eps, weight_decay=weight_decay, weight_decouple=True),
-            # pytorch_optimizer.AdEMAMix(output_params, lr=k_output, betas=(momentum, beta2, beta3), alpha=alpha, eps=eps, weight_decay=weight_decay, weight_decouple=True)
+            pytorch_optimizer.AdEMAMix(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.AdEMAMix(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.AdEMAMix(output_params, lr=k_output, **shared_kwargs)
         ]
 
     # Sep, 2024
     elif opt=="soap":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "betas": (momentum, beta2),
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "precondition_frequency": 10,
+            "max_precondition_dim": 12288,
+            "precondition_1d": False,
+            "correct_bias": True,
+        }
+
         opts = [
-            pytorch_optimizer.SOAP(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=12288, precondition_1d=False, correct_bias=True),
-            pytorch_optimizer.SOAP(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=12288, precondition_1d=False, correct_bias=True),
-            # pytorch_optimizer.SOAP(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, precondition_frequency=10, max_precondition_dim=12288, precondition_1d=False, correct_bias=True)
+            pytorch_optimizer.SOAP(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.SOAP(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.SOAP(output_params, lr=k_output, **shared_kwargs)
         ]
 
     # Nov, 2024
     elif opt=="adopt":
         import pytorch_optimizer
 
+        shared_kwargs: {
+            "betas": (momentum, beta2),
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+            "clip_lambda": lambda step: step**(1/4),
+        }
+
         opts = [
-            pytorch_optimizer.ADOPT(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True, clip_lambda=lambda step: step**(1/4)),
-            pytorch_optimizer.ADOPT(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True, clip_lambda=lambda step: step**(1/4)),
-            # pytorch_optimizer.ADOPT(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, weight_decouple=True, clip_lambda=lambda step: step**(1/4))
+            pytorch_optimizer.ADOPT(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.ADOPT(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.ADOPT(output_params, lr=k_output, **shared_kwargs)
         ]
 
     # Nov, 2024
     elif opt=="marsadam":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "betas": (momentum, beta2),
+            "gamma": gamma,
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+            "mars_type": "adamw",
+            "optimize_1d": True,
+        }
+
         opts = [
-            pytorch_optimizer.MARS(input_params+vector_params, lr=k_input, betas=(momentum, beta2), gamma=gamma, eps=eps, weight_decay=weight_decay, weight_decouple=True, mars_type="adamw", optimize_1d=True),
-            pytorch_optimizer.MARS(hidden_params, lr=k_hidden, betas=(momentum, beta2), gamma=gamma, eps=eps, weight_decay=weight_decay, weight_decouple=True, mars_type="adamw", optimize_1d=True),
-            # pytorch_optimizer.MARS(output_params, lr=k_output, betas=(momentum, beta2), gamma=gamma, eps=eps, weight_decay=weight_decay, weight_decouple=True, mars_type="adamw", optimize_1d=True)
+            pytorch_optimizer.MARS(input_params+vector_params, lr=k_input, **shared_kwargs),
+            pytorch_optimizer.MARS(hidden_params, lr=k_hidden, **shared_kwargs),
+            # pytorch_optimizer.MARS(output_params, lr=k_output, **shared_kwargs)
         ]
 
     # Nov, 2024
     elif opt=="cadam":
         import heavyball
 
+        shared_kwargs: {
+            "betas": (momentum, beta2),
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "caution": True,
+            "foreach": True,
+        }
+
         opts = [
-            heavyball.ForeachAdamW(input_params+vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True),
-            heavyball.ForeachAdamW(hidden_params, lr=k_hidden, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True),
-            # heavyball.ForeachAdamW(output_params, lr=k_output, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, caution=True, foreach=True)
+            heavyball.ForeachAdamW(input_params+vector_params, lr=k_input, **shared_kwargs),
+            heavyball.ForeachAdamW(hidden_params, lr=k_hidden, **shared_kwargs),
+            # heavyball.ForeachAdamW(output_params, lr=k_output, **shared_kwargs)
         ]
     
     # Dec, 2024
     elif opt=="muon":
         # Distributed Muon does NOT work with DCP, is less robust and more complicated 
         import muon
+        
+        adam_kwargs = {
+            "betas": (0.9, 0.95),
+            "eps": 1e-6,
+            "weight_decay": weight_decay,
+            "fused": True,
+        }
 
         opts = [
-            torch.optim.AdamW(input_params+vector_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
+            torch.optim.AdamW(input_params+vector_params, lr=3e-3, **adam_kwargs),
             muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
-            # torch.optim.AdamW(output_params, lr=3e-3, betas=(0.9,0.95), eps=1e-6, weight_decay=weight_decay, fused=True)
+            # torch.optim.AdamW(output_params, lr=3e-3, **adam_kwargs)
         ]
     
     # Feb, 2025
     elif opt=="scion":
         import pytorch_optimizer
 
+        shared_kwargs = {
+            "momentum": 1-momentum,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+            "constraint": False,
+            "scale": 1,
+        }
+
         opts = [
-            pytorch_optimizer.SCION(input_params, lr=1, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=4, scale=1),
-            pytorch_optimizer.SCION(vector_params, lr=3e-3, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=8, scale=1),
-            pytorch_optimizer.SCION(hidden_params, lr=k_hidden, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=2, scale=1),
-            # pytorch_optimizer.SCION(output_params, lr=k_output, momentum=1-momentum, weight_decay=weight_decay, weight_decouple=True, constraint=False, norm_type=4, scale=1)
+            pytorch_optimizer.SCION(input_params, lr=1, **shared_kwargs, norm_type=4),
+            pytorch_optimizer.SCION(vector_params, lr=3e-3, **shared_kwargs, norm_type=8),
+            pytorch_optimizer.SCION(hidden_params, lr=k_hidden, **shared_kwargs, norm_type=2),
+            # pytorch_optimizer.SCION(output_params, lr=k_output, **shared_kwargs, norm_type=4)
         ]
 
+    elif opt=="dash":
+        from ista_daslab_optimizers import DashConfig, DashInverseRootMethodType, DashGraftingType, DashMatrixScalingType, DashAlgoOneDim, DashEvdHeuristic, DashGpu
+        
+        config = DashConfig(
+            adamw_eps = eps,
+            adamw_beta1 = momentum,
+            adamw_beta2 = beta2,
+
+            beta_G = momentum,
+            beta_LR = beta2,
+            beta_graft = beta2,
+
+            eps_inv_root = 0,
+            inv_root_method = DashInverseRootMethodType.from_string("ndb"),
+            inv_root_freq = 1,
+
+            grafting_type = DashGraftingType.from_string("adam"),
+            eps_grafting = eps,
+
+            mu = 0,
+            use_nesterov = False,
+            use_bias_correction = True,
+
+            start_prec_step = -1,
+            block_size = 768,
+            matmul_dtype = torch.float32,
+
+            matrix_scaling_type = DashMatrixScalingType.from_string("pim"),
+            matrix_scaling_pi_steps = 10,
+            matrix_scaling_const = 2,
+
+            newton_steps = 10,
+            algo_one_dim = DashAlgoOneDim.from_string("shmp"),
+
+            ### EVD
+            evd_heuristic = DashEvdHeuristic.from_string("shmp"),
+
+            ### CN
+            cn_tolerance = 1e-6,
+
+            ### CBSHV
+            cbshv_degree = 60,
+        )
+
+        shared_kwargs = {
+            "weight_decay": weight_decay,
+            "config": config,
+        }
+        
+        opts = [
+            DashGpu(input_params, lr=k_input, **shared_kwargs),
+            torch.optim.AdamW(vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True),
+            DashGpu(hidden_params, lr=k_hidden, **shared_kwargs),
+            # DashGpu(output_params, lr=k_output, **shared_kwargs)
+        ]
+        
     return opts
