@@ -15,7 +15,7 @@ root_path = os.path.dirname(src_path)
 
 DATASETS_TABULAR = ["california_housing"]
 DATASETS_IMAGE = ["mnist", "cifar10", "tinyimagenet"]
-DATASETS_TEXT = ["shakespearefirstfolio", "wikitext", "minipile", "openwebtext", "fineweb", "finewebedu", "climbmix10m", "climbmix100m", "climbmix", "climbmix+synth", "ancient_greek_theatre", "culturay_el"]
+DATASETS_TEXT = ["shakespearefirstfolio", "wikitext", "minipile", "openwebtext", "fineweb", "finewebedu", "climbmix10m", "climbmix100m", "climbmix", "synth", "climbmix+synth", "ancient_greek_theatre", "culturay_el"]
 DATASETS = DATASETS_TABULAR + DATASETS_IMAGE + DATASETS_TEXT
 TOKENIZER_TYPES = ["tokenizers", "tokenmonster"]
 
@@ -96,6 +96,14 @@ def get_splits(dataset, keep_in_memory=False):
         val_dataset = dataset["test"]
     elif dataset=="climbmix":
         dataset = datasets.load_dataset("mansaripo/ClimbMix_shuffled", split="train", keep_in_memory=keep_in_memory)
+        dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
+        test_dataset = dataset["test"]
+        dataset = dataset["train"]
+        dataset = dataset.train_test_split(train_size=None, test_size=500, shuffle=True, keep_in_memory=keep_in_memory)
+        train_dataset = dataset["train"]
+        val_dataset = dataset["test"]
+    elif dataset=="synth":
+        dataset = datasets.load_dataset("mansaripo/SYNTH_shuffled", split="train", keep_in_memory=keep_in_memory)
         dataset = dataset.train_test_split(train_size=None, test_size=10_000, shuffle=True, keep_in_memory=keep_in_memory)
         test_dataset = dataset["test"]
         dataset = dataset["train"]
