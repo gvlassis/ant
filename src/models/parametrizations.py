@@ -606,9 +606,9 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
         
         opts = [
             DashGpu(input_params, lr=k_input, **shared_kwargs),
-            torch.optim.AdamW(vector_params, lr=k_input, betas=(momentum, beta2), eps=eps, weight_decay=weight_decay, fused=True),
+            torch.optim.AdamW(vector_params, lr=3e-3, betas=(0.9, 0.95), eps=1e-6, weight_decay=weight_decay, fused=True),
             DashGpu(hidden_params, lr=k_hidden, **shared_kwargs),
             # DashGpu(output_params, lr=k_output, **shared_kwargs)
         ]
-        
+
     return opts
