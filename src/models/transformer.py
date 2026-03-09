@@ -181,7 +181,8 @@ def sdpa_flash(Q, K, V, causal=False, alibi=None, swa=None, scale=None, backend=
         Y = flash_attn_interface.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, window_size=swa, softmax_scale=scale)
     elif backend=="flash4":
         import flash_attn.cute
-        Y = flash_attn.cute.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, window_size=swa, softmax_scale=scale)
+        # FlashAttention4 returns (out, lse)
+        Y = flash_attn.cute.flash_attn_func(Q.to(dtype), K.to(dtype), V.to(dtype), causal=causal, window_size=swa, softmax_scale=scale)[0]
     
     Y = Y.to(Q.dtype)
     
@@ -508,7 +509,7 @@ class Transformer(torch.nn.Module):
         if self.is_causal:
             if self.backend=="pytorch":
                 causal = get_causal(context).to(ids.device)
-            elif self.backend=="flash2":
+            elif self.backend in {"flash2", "flash3", "flash4"}:
                 causal = True
             elif self.backend=="flex":
                 causal = causal_mod
@@ -531,7 +532,7 @@ class Transformer(torch.nn.Module):
         if self.pos_type == "alibi":
             if self.backend=="pytorch":
                 alibi = get_alibi(self.heads, context).to(ids.device)
-            elif self.backend=="flash2":
+            elif self.backend in {"flash2", "flash3", "flash4"}:
                 alibi = get_m(self.heads).to(ids.device)
             elif self.backend=="flex":
                 alibi = alibi_mod
@@ -542,7 +543,7 @@ class Transformer(torch.nn.Module):
         if self.window is not None:
             if self.backend=="pytorch":
                 swa = get_swa(context, self.window).to(ids.device)
-            elif self.backend=="flash2":
+            elif self.backend in {"flash2", "flash3", "flash4"}:
                 swa = (self.window, self.window)
             elif self.backend=="flex":
                 swa = swa_mod
