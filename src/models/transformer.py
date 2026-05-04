@@ -412,7 +412,7 @@ class Block(torch.nn.Module):
     def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash2", conv1d_backend="causal-conv1d"):
         X_ = self.pre_att_norm(X) if self.pre_att_norm else X
         if self.canon_a: X_ = self.canon_a(X_, conv1d_backend)
-        mhsa = self.mhsa(X_, causal, rope, alibi, swa, return_A, backend)
+        mhsa = self.mhsa(X_, causal, rope, alibi, swa, return_A, backend, conv1d_backend)
         if not return_A:
             X_ = mhsa
         else:
