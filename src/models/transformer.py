@@ -425,7 +425,7 @@ class Block(torch.nn.Module):
         
         Y_ = self.pre_mlp_norm(Y) if self.pre_mlp_norm else Y
         if self.canon_c: Y_ = self.canon_c(Y_, conv1d_backend)
-        Y_ = self.mlp(Y_)
+        Y_ = self.mlp(Y_, conv1d_backend)
 
         if self.out_mlp_norm: Y_ = self.out_mlp_norm(Y_)
 

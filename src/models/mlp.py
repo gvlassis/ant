@@ -110,14 +110,14 @@ class MLP2L(torch.nn.Module):
 
     def forward(self, x, conv1d_backend="causal-conv1d"):
         z1 = self.l1(x)
-        if self.canon1: z1 = self.canon1(z1, conv1d_backend)
+        if self.canon: z1 = self.canon1(z1, conv1d_backend)
 
-        if l1_type=="linear":
+        if self.l1_type=="linear":
             a1 = self.act(z1)
 
-        elif l1_type=="glu":
+        elif self.l1_type=="glu":
             g = self.lg(x)
-            if self.canon_g: g = self.canon_g(g, conv1d_backend)
+            if self.canon: g = self.canon_g(g, conv1d_backend)
             a1 = z1 * self.act(g)
 
         if self.norm: a1 = self.norm(a1)
