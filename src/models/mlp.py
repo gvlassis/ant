@@ -1,5 +1,7 @@
 import torch
 
+CONV1D_BACKENDS = ["pytorch", "causal-conv1d"]
+
 # Normalizes on the hypersphere along dim
 # (s1*...*)s-1
 def sphere_norm(X, dim=-1):
@@ -43,18 +45,59 @@ class Abs(torch.nn.Module):
 
         return y
 
+class Canon(torch.nn.Module):
+    def __init__(self, d, res=True, kernel_size=4):
+        super().__init__()
+        
+        self.d = d
+        self.res = res
+        self.kernel_size = kernel_size
+        
+        b = 1/sqrt(kernel_size)
+        weight = torch.empty((d, kernel_size)).uniform_(-b, b)
+        self.weight = torch.nn.Parameter(weight)
+
+    # (batches*)context*d
+    def forward(self, X, conv1d_backend="causal-conv1d"):
+        context = X.shape[-2]
+        
+        if conv1d_backend == "pytorch":
+            # (batches*)d*(context+kernel_size-1)
+            Y = torch.nn.functional.conv1d(X.swapdims(-2,-1), self.weight.unsqueeze(1), bias=None, stride=1, padding=self.kernel_size-1, groups=self.d)
+            # (batches*)d*context
+            Y = Y[...,:context]
+            Y = Y.swapdims(-2,-1)
+        
+        elif conv1d_backend == "causal-conv1d":
+            import causal_conv1d
+            
+            # (batches*)d*context
+            Y = causal_conv1d.causal_conv1d_fn(X.swapdims(-2,-1), self.weight, bias=None, activation=None)
+            Y = Y.swapdims(-2,-1)
+        
+        if self.res:
+            Y = X + Y
+        
+        return Y
+
 class GLU(torch.nn.Module):
-    def __init__(self, d0, d1, bias=True, act=torch.nn.ReLU()):
+    def __init__(self, d0, d1, bias=True, canon=False, canon_res=True, canon_kernel_size=4, act=torch.nn.ReLU()):
         super().__init__()
 
         self.d0 = d0
         self.d1 = d1
         self.bias = bias
+        self.canon = canon
+        self.canon_res = canon_res
+        self.canon_kernel_size = canon_kernel_size
         self.act = act
         
-        self.gate = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
-
-        self.proj = torch.nn.Linear(d0, d1, bias)
+        if canon:
+            self.gate = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), Canon(d1, canon_res, canon_kernel_size), act)
+            self.proj = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), Canon(d1, canon_res, canon_kernel_size))
+        else:
+            self.gate = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+            self.proj = torch.nn.Linear(d0, d1, bias)
 
     def forward(self, x):
         y = self.gate(x) * self.proj(x)
@@ -62,7 +105,7 @@ class GLU(torch.nn.Module):
         return y
 
 class MLP2L(torch.nn.Module):
-    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False):
+    def __init__(self, d0, d1, d2, bias=True, act=torch.nn.ReLU(), dropout=0, l1_type="linear", norm_type="rms_learned", norm=False, canon=False, canon_res=True, canon_kernel_size=4):
         super().__init__()
 
         self.d0 = d0
@@ -73,11 +116,17 @@ class MLP2L(torch.nn.Module):
         self.dropout = dropout
         self.l1_type = l1_type
         self.norm_type = norm_type
+        self.canon = canon
+        self.canon_res = canon_res
+        self.canon_kernel_size = canon_kernel_size
 
         if l1_type=="linear":
-            self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+            if canon:
+                self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), act)
+            else:
+                self.l1 = torch.nn.Sequential(torch.nn.Linear(d0, d1, bias), Canon(d1, canon_res, canon_kernel_size), act)
         elif l1_type=="glu":
-            self.l1 = GLU(d0, d1, bias, act)
+            self.l1 = GLU(d0, d1, bias, canon, canon_res, canon_kernel_size, act)
 
         self.norm = get_norm(norm, norm_type, d1, bias)
 

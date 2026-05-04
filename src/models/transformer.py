@@ -7,6 +7,7 @@ SCALE_TYPES = ["1/sqrt(d)", "1/d"]
 POS_TYPES = ["learned", "sinusoidal", "rope", "alibi"]
 BACKENDS = ["pytorch", "flash2", "flash3", "flash4", "flex", "cudnn"]
 NORM_TYPES = ["layer", "rms_learned", "rms_const", "sphere"]
+CONV1D_BACKENDS = ["pytorch", "causal-conv1d"]
 
 def get_causal(context):
     causal = torch.full((context,context), True)
@@ -289,7 +290,7 @@ def test_sdpa():
     print("\x1b[32m ✔\x1b[0m")
 
 class MHSA(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, qk_norm=True, canon=False, canon_res=True, canon_kernel_size=4):
         super().__init__()
 
         self.heads = heads
@@ -309,21 +310,34 @@ class MHSA(torch.nn.Module):
                 self.scale = 1/sqrt(d_head)
             elif scale_type=="1/d":
                 self.scale = 1/d_head
+        self.canon = canon
+        self.canon_res = canon_res
+        self.canon_kernel_size = canon_kernel_size
         
         # Packing QKV gives negligible speed gains, while not allowing GQA, hurting code clarity and having side effects with μP
         self.lq = torch.nn.Linear(self.d, self.d, bias=False)
         self.lk = torch.nn.Linear(self.d, self.d_KV, bias=False)
         self.lv = torch.nn.Linear(self.d, self.d_KV, bias=False)
+
+        if canon:
+            self.canon_q = mlp.Canon(self.d, canon_res, canon_kernel_size)
+            self.canon_k = mlp.Canon(self.d_KV, canon_res, canon_kernel_size)
+            self.canon_v = mlp.Canon(self.d_KV, canon_res, canon_kernel_size)
         
         self.lo = torch.nn.Linear(self.d, self.d, bias=False)
 
     # (batches*)context*d
-    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash2"):
+    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_A=False, backend="flash2", conv1d_backend="causal-conv1d"):
         # (batches*)context*d
         Q = self.lq(X)
         # (batches*)context*d_KV
         K = self.lk(X)
         V = self.lv(X)
+
+        if self.canon:
+            Q = self.canon_q(Q, conv1d_backend)
+            K = self.canon_k(K, conv1d_backend)
+            V = self.canon_v(V, conv1d_backend)
 
         # (batches*)context*heads*d_head
         Q = Q.unflatten(dim=-1, sizes=(self.heads, self.d_head))
@@ -364,7 +378,7 @@ class MHSA(torch.nn.Module):
             return Y, A__, A_, A
 
 class Block(torch.nn.Module):
-    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True):
+    def __init__(self, heads, d_head, scale_type="1/sqrt(d)", ratio=1, exp_factor=4, dropout=0, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, canon_a=False, canon_b=False, canon_c=False, canon_d=False, canon_res=True, canon_kernel_size=4):
         super().__init__()
 
         self.heads = heads
@@ -380,47 +394,57 @@ class Block(torch.nn.Module):
         self.bias = bias
         self.act = act
         self.l1_type = l1_type
+        self.canon_b = canon_b
+        self.canon_d = canon_d
+        self.canon_res = canon_res
+        self.canon_kernel_size = canon_kernel_size
         
-        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm)
+        self.mhsa = MHSA(heads, d_head, scale_type, ratio, qk_norm, canon_b, canon_res, canon_kernel_size)
         self.pre_att_norm = mlp.get_norm(pre_att_norm, norm_type, self.d, bias)
         self.out_att_norm = mlp.get_norm(out_att_norm, norm_type, self.d, bias)
+        self.canon_a = mlp.Canon(self.d, canon_res, canon_kernel_size) if canon_a else None
 
-        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm)
+        self.mlp = mlp.MLP2L(self.d, self.d_hidden, self.d, bias, act, dropout, l1_type, norm_type, act_norm, canon_d, canon_res, canon_kernel_size)
         self.pre_mlp_norm = mlp.get_norm(pre_mlp_norm, norm_type, self.d, bias)
         self.out_mlp_norm = mlp.get_norm(out_mlp_norm, norm_type, self.d, bias)
+        self.canon_c = mlp.Canon(self.d, canon_res, canon_kernel_size) if canon_c else None
         
-    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash2"):
-        mhsa = self.mhsa(self.pre_att_norm(X) if self.pre_att_norm else X, causal, rope, alibi, swa, return_A, backend)
+    def forward(self, X, causal=None, rope=None, alibi=None, swa=None, return_res=False, return_A=False, backend="flash2", conv1d_backend="causal-conv1d"):
+        X_ = self.pre_att_norm(X) if self.pre_att_norm else X
+        if self.canon_a: X_ = self.canon_a(X_, conv1d_backend)
+        mhsa = self.mhsa(X_, causal, rope, alibi, swa, return_A, backend)
         if not return_A:
-            Y = mhsa
+            X_ = mhsa
         else:
-            Y, A__, A_, A = mhsa
-
-        if self.out_att_norm: Y = self.out_att_norm(Y)
-
-        Y_ = torch.nn.functional.dropout(Y, p=self.dropout, training=self.training)
-        Y__ = X + Y_
+            X_, A__, A_, A = mhsa
         
-        Z = self.mlp(self.pre_mlp_norm(Y__) if self.pre_mlp_norm else Y__)
+        if self.out_att_norm: X_ = self.out_att_norm(X_)
+        
+        X_ = torch.nn.functional.dropout(X_, p=self.dropout, training=self.training)
+        Y = X + X_
+        
+        Y_ = self.pre_mlp_norm(Y) if self.pre_mlp_norm else Y
+        if self.canon_c: Y_ = self.canon_c(Y_, conv1d_backend)
+        Y_ = self.mlp(Y_)
 
-        if self.out_mlp_norm: Z = self.out_mlp_norm(Z)
+        if self.out_mlp_norm: Y_ = self.out_mlp_norm(Y_)
 
-        Z_ = torch.nn.functional.dropout(Z, p=self.dropout, training=self.training)
-        Z__ = Y__ + Z_
+        Y_ = torch.nn.functional.dropout(Y_, p=self.dropout, training=self.training)
+        Z = Y + Y_
 
         if not return_res:
             if not return_A:
-                return Z__
+                return Z
             else:
-                return Z__, A__, A_, A
+                return Z, A__, A_, A
         else:
             if not return_A:
-                return Z__, Y__
+                return Z, Y
             else:
-                return Z__, Y__, A__, A_, A    
+                return Z, Y, A__, A_, A    
 
 class Transformer(torch.nn.Module):
-    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash2", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False):
+    def __init__(self, vocab_size=50304, num_blocks=12, heads=12, d_head=64, scale_type="1/sqrt(d)", ratio=1, is_causal=True, window=None, backend="flash2", exp_factor=4, dropout=0, pos_type="rope", max_context=128, norm_type="rms_learned", bias=False, act=mlp.ReLU2(), l1_type="linear", std=0.02, test=False, weight_tying=True, emb_norm=False, pre_att_norm=False, qk_norm=True, out_att_norm=True, pre_mlp_norm=False, act_norm=False, out_mlp_norm=True, out_norm=True, fix_norm=False, canon_a=False, canon_b=False, canon_c=False, canon_d=False, canon_res=True, canon_kernel_size=4, conv1d_backend="causal-conv1d"):
         super().__init__()
 
         self.vocab_size = vocab_size
@@ -444,6 +468,13 @@ class Transformer(torch.nn.Module):
         self.l1_type = l1_type
         self.weight_tying = weight_tying
         self.fix_norm = fix_norm
+        self.canon_a = canon_a
+        self.canon_b = canon_b
+        self.canon_c = canon_c
+        self.canon_d = canon_d
+        self.canon_res = canon_res
+        self.canon_kernel_size = canon_kernel_size
+        self.conv1d_backend = conv1d_backend
 
         self.emb = torch.nn.Embedding(vocab_size, self.d)
 
@@ -453,7 +484,7 @@ class Transformer(torch.nn.Module):
             pos = torch.rand((max_context, self.d))
             self.pos = torch.nn.Parameter(pos)
         
-        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm) for _ in range(num_blocks)])
+        self.blocks = torch.nn.Sequential(*[Block(heads, d_head, scale_type, ratio, exp_factor, dropout, norm_type, bias, act, l1_type, pre_att_norm, qk_norm, out_att_norm, pre_mlp_norm, act_norm, out_mlp_norm, canon_a, canon_b, canon_c, canon_d, canon_res, canon_kernel_size) for _ in range(num_blocks)])
         
         self.out_norm = mlp.get_norm(out_norm, norm_type, self.d, bias)
         
@@ -475,6 +506,9 @@ class Transformer(torch.nn.Module):
                 torch.nn.init.zeros_(parameter)
             elif isinstance(parent, (torch.nn.LayerNorm, torch.nn.RMSNorm)) and suffix=="weight":
                 torch.nn.init.ones_(parameter)
+            elif isinstance(parent, mlp.Canon) and suffix=="weight":
+                b = 1/sqrt(self.canon_kernel_size)
+                torch.nn.init.uniform_(parameter, -b, b)
             else:
                 # pos
                 if parameter.ndim == 2:
@@ -561,15 +595,15 @@ class Transformer(torch.nn.Module):
         for i, block in enumerate(self.blocks):
             if not return_res:
                 if not return_A:
-                    Y = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                    Y = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend, self.conv1d_backend)
                 else:
-                    Y, A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                    Y, A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend, self.conv1d_backend)
             else:
                 if not return_A:
-                    Y, res_att[...,i,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                    Y, res_att[...,i,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend, self.conv1d_backend)
                     res_mlp[...,i,:,:]= Y
                 else:
-                    Y, res_att[...,i,:,:], A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend)
+                    Y, res_att[...,i,:,:], A__[...,i,:,:,:], A_[...,i,:,:,:], A[...,i,:,:,:] = block(Y, causal, rope, alibi, swa, return_res, return_A, self.backend, self.conv1d_backend)
                     res_mlp[...,i,:,:]= Y
         
         if self.out_norm: Y = self.out_norm(Y)
