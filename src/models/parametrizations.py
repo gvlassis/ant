@@ -629,7 +629,8 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
 
         opts = [
             torch.optim.AdamW(input_params+vector_params, lr=3e-3, **adam_kwargs),
-            pytorch_optimizer.AdaMuon(hidden_params, lr=k_hidden, **adamuon_kwargs),
+            # AdaMuon needs use_muon
+            pytorch_optimizer.AdaMuon([{"params": hidden_params, "use_muon": True}], lr=k_hidden, **adamuon_kwargs),
             # torch.optim.AdamW(output_params, lr=3e-3, **adam_kwargs)
         ]
 
