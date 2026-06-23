@@ -9,7 +9,7 @@ warnings.formatwarning = get_formatwarning
 from . import optimizers
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion", "dash"]
+OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion", "dash", "adamuon", "normuon", "normuon"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
@@ -529,10 +529,15 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
             "weight_decay": weight_decay,
             "fused": True,
         }
+        
+        muon_kwargs = {
+            "momentum": momentum,
+            "weight_decay": weight_decay,
+        }
 
         opts = [
             torch.optim.AdamW(input_params+vector_params, lr=3e-3, **adam_kwargs),
-            muon.SingleDeviceMuon(hidden_params, lr=k_hidden, momentum=momentum, weight_decay=weight_decay),
+            muon.SingleDeviceMuon(hidden_params, lr=k_hidden, **muon_kwargs),
             # torch.optim.AdamW(output_params, lr=3e-3, **adam_kwargs)
         ]
     
@@ -603,5 +608,93 @@ def parametrize(model0, model_or_ddp, model_, parametrization, c_input, c_hidden
             # # DashGpu(output_params, lr=k_output, **shared_kwargs)
             DashGpu(input_params+vector_params+hidden_params, lr=k_input, **shared_kwargs)
         ]
+
+    # Jul, 2025
+    elif opt=="adamuon":
+        import pytorch_optimizer
+
+        adam_kwargs = {
+            "betas": (0.9, 0.95),
+            "eps": 1e-6,
+            "weight_decay": weight_decay,
+            "fused": True,
+        }
+        
+        adamuon_kwargs = {
+            "betas": (momentum, beta2),
+            "eps": eps,
+            "weight_decay": weight_decay,
+            "weight_decouple": True,
+        }
+
+        opts = [
+            torch.optim.AdamW(input_params+vector_params, lr=3e-3, **adam_kwargs),
+            pytorch_optimizer.AdaMuon(hidden_params, lr=k_hidden, **adamuon_kwargs),
+            # torch.optim.AdamW(output_params, lr=3e-3, **adam_kwargs)
+        ]
+
+    # Oct, 2025
+    elif opt=="normuon":
+        # Distributed NorMuon does NOT work with DCP, is less robust and more complicated 
+        import normuon
+
+        adam_kwargs = {
+            "betas": (0.9, 0.95),
+            "eps": 1e-6,
+            "weight_decay": weight_decay,
+            "fused": True,
+        }
+        
+        # normuon hardcodes eps=1e-10
+        normuon_kwargs = {
+            "momentum": momentum,
+            "beta2": beta2,
+            "weight_decay": weight_decay,
+        }
+
+        opts = [
+            torch.optim.AdamW(input_params+vector_params, lr=3e-3, **adam_kwargs),
+            normuon.SingleDeviceNorMuon(hidden_params, lr=k_hidden, **normuon_kwargs),
+            # torch.optim.AdamW(output_params, lr=3e-3, **adam_kwargs)
+        ]
+
+    # May, 2026
+    elif opt=="unormuon":
+        # Distributed NorMuon/UNorMuon do NOT work with DCP, are less robust and more complicated
+        import normuon
+        import unormuon
+
+        hidden_params_wide_or_square = [parameter for parameter in hidden_params if parameter.shape[0]<=parameter.shape[1]]
+        hidden_params_tall = [parameter for parameter in hidden_params if parameter.shape[0]>parameter.shape[1]]
+
+        adam_kwargs = {
+            "betas": (0.9, 0.95),
+            "eps": 1e-6,
+            "weight_decay": weight_decay,
+            "fused": True,
+        }
+        
+        # normuon/unormuon hardcode eps=1e-10
+        normuon_kwargs = {
+            "momentum": momentum,
+            "beta2": beta2,
+            "weight_decay": weight_decay,
+        }
+
+        opts = [
+            torch.optim.AdamW(input_params+vector_params, lr=3e-3, **adam_kwargs),
+            normuon.SingleDeviceNorMuon(hidden_params_wide_or_square, lr=k_hidden, **normuon_kwargs),
+            unormuon.SingleDeviceUNorMuon(hidden_params_tall, lr=k_hidden, **normuon_kwargs),
+            # torch.optim.AdamW(output_params, lr=3e-3, **adam_kwargs)
+        ]
+    
+    # # May, 2026
+    # elif opt=="aurora":
+    #
+    # # May, 2026
+    # elif opt=="freon":
+    #
+    # # May, 2026
+    # elif opt=="kaon":
 
     return opts
