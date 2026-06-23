@@ -9,7 +9,7 @@ warnings.formatwarning = get_formatwarning
 from . import optimizers
 
 PARAMETRIZATIONS = ["np", "sp", "ntk", "mup", "mf"]
-OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion", "dash", "adamuon", "normuon", "normuon"]
+OPTIMIZERS = ["sgd", "adam", "kron", "pro", "shampoo", "laprop", "lion", "ademamix", "soap", "adopt", "marsadam", "cadam", "muon", "scion", "dash", "adamuon", "normuon", "unormuon"]
 
 def lookup_table1(parametrization, layer, fanin0, fanin, fanout0, fanout):
     if parametrization == "sp":
